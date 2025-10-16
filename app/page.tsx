@@ -211,37 +211,6 @@ export default function HomePage() {
                         </CardContent>
                     </Card>
                 </div>
-
-                {/* Features */}
-                <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-                    <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-                        <div className="text-3xl mb-2">⚡</div>
-                        <h3 className="font-semibold text-lg mb-1 text-gray-900 dark:text-white">
-                            Real-time Updates
-                        </h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                            See votes and results instantly
-                        </p>
-                    </div>
-                    <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-                        <div className="text-3xl mb-2">🎯</div>
-                        <h3 className="font-semibold text-lg mb-1 text-gray-900 dark:text-white">
-                            Fibonacci Cards
-                        </h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                            Standard planning poker values
-                        </p>
-                    </div>
-                    <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-                        <div className="text-3xl mb-2">📊</div>
-                        <h3 className="font-semibold text-lg mb-1 text-gray-900 dark:text-white">
-                            Visual Results
-                        </h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                            Charts and statistics for votes
-                        </p>
-                    </div>
-                </div>
             </div>
         </div>
     );
