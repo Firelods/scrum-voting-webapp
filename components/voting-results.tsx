@@ -48,45 +48,53 @@ export function VotingResults({ room }: VotingResultsProps) {
     }
 
     const average = votes.reduce((sum, vote) => sum + vote, 0) / votes.length;
-    const median = [...votes].sort((a, b) => a - b)[
-        Math.floor(votes.length / 2)
-    ];
-    const mode = votes
-        .sort(
-            (a, b) =>
-                votes.filter((v) => v === a).length -
-                votes.filter((v) => v === b).length
-        )
-        .pop();
+    const sortedVotes = [...votes].sort((a, b) => a - b);
+    const median = sortedVotes[Math.floor(votes.length / 2)];
 
-    // Prepare chart data
+    // Calculate vote counts
     const voteCounts = new Map<number, number>();
     votes.forEach((vote) => {
         voteCounts.set(vote, (voteCounts.get(vote) || 0) + 1);
     });
 
+    // Calculate mode (most common vote) correctly
+    const mode = Array.from(voteCounts.entries()).reduce((a, b) =>
+        a[1] > b[1] ? a : b
+    )[0];
+
+    // Prepare chart data
+
+    // Define distinct colors for better visibility
+    const colors = [
+        "hsl(210, 100%, 56%)", // Blue
+        "hsl(340, 82%, 52%)", // Pink/Red
+        "hsl(291, 64%, 42%)", // Purple
+        "hsl(168, 76%, 42%)", // Teal
+        "hsl(48, 96%, 53%)", // Yellow
+        "hsl(24, 90%, 50%)", // Orange
+        "hsl(142, 71%, 45%)", // Green
+        "hsl(199, 89%, 48%)", // Light Blue
+        "hsl(0, 72%, 51%)", // Red
+        "hsl(262, 52%, 47%)", // Violet
+    ];
+
     const chartData = Array.from(voteCounts.entries())
-        .map(([value, count]) => ({
+        .map(([value, count], index) => ({
             value: value.toString(),
+            numericValue: value,
             count,
-            fill: `hsl(${(value / 100) * 120}, 70%, 50%)`, // Color gradient from red to green
+            fill: colors[index % colors.length],
         }))
-        .sort((a, b) => Number(a.value) - Number(b.value));
+        .sort((a, b) => a.numericValue - b.numericValue);
 
     // Determine consensus level
     const maxCount = Math.max(...Array.from(voteCounts.values()));
     const consensusPercentage = (maxCount / votes.length) * 100;
-    const hasConsensus = consensusPercentage >= 70;
 
     return (
         <Card className="border-2 border-green-500">
             <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                    <span>Voting Results</span>
-                    {hasConsensus && (
-                        <Badge className="bg-green-500">Strong Consensus</Badge>
-                    )}
-                </CardTitle>
+                <CardTitle>Voting Results</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
                 {/* Statistics */}
@@ -187,13 +195,15 @@ export function VotingResults({ room }: VotingResultsProps) {
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                         <div
                             className={`h-3 rounded-full transition-all duration-300 ${
-                                hasConsensus ? "bg-green-500" : "bg-yellow-500"
+                                consensusPercentage >= 70
+                                    ? "bg-green-500"
+                                    : "bg-yellow-500"
                             }`}
                             style={{ width: `${consensusPercentage}%` }}
                         />
                     </div>
                     <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
-                        {hasConsensus
+                        {consensusPercentage >= 70
                             ? "Strong agreement! The team is aligned on this estimate."
                             : "Consider discussing the different perspectives before finalizing."}
                     </p>
