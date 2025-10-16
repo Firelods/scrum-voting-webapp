@@ -1,259 +1,421 @@
-"use server"
+"use server";
 
-import { sql } from "@/lib/db"
-import type { Room, Story } from "@/lib/types"
+import { supabaseServer } from "@/lib/db-supabase";
+import type { Room, Story } from "@/lib/types";
 
 // Helper function to generate a random room code
 function generateRoomCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-  let code = ""
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return code
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
 }
 
 // Helper function to build Room object from database rows
 async function buildRoomObject(code: string): Promise<Room | null> {
-  const [roomData] = await sql`
-    SELECT * FROM rooms WHERE code = ${code}
-  `
+    // Fetch room data
+    const { data: roomData, error: roomError } = await supabaseServer
+        .from("rooms")
+        .select("*")
+        .eq("code", code)
+        .single();
 
-  if (!roomData) return null
+    if (roomError || !roomData) return null;
 
-  const participants = await sql`
-    SELECT p.name, p.is_scrum_master, v.vote_value
-    FROM participants p
-    LEFT JOIN votes v ON p.room_code = v.room_code AND p.name = v.participant_name
-    WHERE p.room_code = ${code}
-    ORDER BY p.joined_at
-  `
+    // Fetch participants
+    const { data: participants, error: participantsError } =
+        await supabaseServer
+            .from("participants")
+            .select("name, is_scrum_master, last_seen")
+            .eq("room_code", code)
+            .order("joined_at", { ascending: true });
 
-  const stories = await sql`
-    SELECT id, title, jira_link
-    FROM stories
-    WHERE room_code = ${code}
-    ORDER BY order_index
-  `
+    if (participantsError) {
+        console.error("Error fetching participants:", participantsError);
+        return null;
+    }
 
-  const currentStory = stories[roomData.current_story_index] || null
+    // Determine who is online (last seen within 15 seconds)
+    const now = Date.now();
+    const onlineThreshold = 15000; // 15 seconds
 
-  return {
-    code: roomData.code,
-    currentStory: currentStory
-      ? {
-          id: currentStory.id.toString(),
-          title: currentStory.title,
-          jiraLink: currentStory.jira_link || undefined,
-        }
-      : null,
-    storyQueue: stories.map((s: any) => ({
-      id: s.id.toString(),
-      title: s.title,
-      jiraLink: s.jira_link || undefined,
-    })),
-    participants: participants.map((p: any) => ({
-      id: p.name, // Using name as ID for simplicity
-      name: p.name,
-      vote: p.vote_value,
-      isScumMaster: p.is_scrum_master,
-    })),
-    votingActive: roomData.voting_state === "voting",
-    votesRevealed: roomData.votes_revealed,
-    timerSeconds: roomData.timer_duration,
-    timerStartedAt: roomData.timer_end_time ? roomData.timer_end_time - roomData.timer_duration * 1000 : null,
-    createdAt: new Date(roomData.created_at).getTime(),
-  }
+    // Fetch votes separately
+    const { data: votes, error: votesError } = await supabaseServer
+        .from("votes")
+        .select("participant_name, vote_value")
+        .eq("room_code", code);
+
+    if (votesError) {
+        console.error("Error fetching votes:", votesError);
+        return null;
+    }
+
+    // Create a map of votes by participant name
+    const voteMap = new Map(
+        (votes || []).map((v: any) => [v.participant_name, v.vote_value])
+    );
+
+    // Fetch stories
+    const { data: stories, error: storiesError } = await supabaseServer
+        .from("stories")
+        .select("id, title, jira_link")
+        .eq("room_code", code)
+        .order("order_index", { ascending: true });
+
+    if (storiesError) {
+        console.error("Error fetching stories:", storiesError);
+        return null;
+    }
+
+    const currentStory = (stories || [])[roomData.current_story_index] || null;
+
+    return {
+        code: roomData.code,
+        currentStory: currentStory
+            ? {
+                  id: currentStory.id.toString(),
+                  title: currentStory.title,
+                  jiraLink: currentStory.jira_link || undefined,
+              }
+            : null,
+        storyQueue: (stories || []).map((s: any) => ({
+            id: s.id.toString(),
+            title: s.title,
+            jiraLink: s.jira_link || undefined,
+        })),
+        participants: (participants || []).map((p: any) => {
+            const lastSeen = p.last_seen ? new Date(p.last_seen).getTime() : 0;
+            const isOnline = now - lastSeen < onlineThreshold;
+
+            return {
+                id: p.name,
+                name: p.name,
+                vote: voteMap.get(p.name) || null,
+                isScumMaster: p.is_scrum_master,
+                isOnline,
+                lastSeen,
+            };
+        }),
+        votingActive: roomData.voting_state === "voting",
+        votesRevealed: roomData.votes_revealed,
+        timerSeconds: roomData.timer_duration,
+        timerStartedAt: roomData.timer_end_time
+            ? roomData.timer_end_time - roomData.timer_duration * 1000
+            : null,
+        createdAt: new Date(roomData.created_at).getTime(),
+    };
 }
 
 export async function createRoom() {
-  const code = generateRoomCode()
+    const code = generateRoomCode();
 
-  await sql`
-    INSERT INTO rooms (code, scrum_master_name)
-    VALUES (${code}, 'Scrum Master')
-  `
+    const { error } = await supabaseServer.from("rooms").insert({
+        code,
+        scrum_master_name: "Scrum Master",
+    });
 
-  const room = await buildRoomObject(code)
-  return { success: true, room }
+    if (error) {
+        console.error("Error creating room:", error);
+        return { success: false, error: "Failed to create room" };
+    }
+
+    const room = await buildRoomObject(code);
+    return { success: true, room };
 }
 
-export async function joinRoom(code: string, name: string, isScumMaster = false) {
-  // Check if room exists
-  const [room] = await sql`
-    SELECT code FROM rooms WHERE code = ${code}
-  `
+export async function joinRoom(
+    code: string,
+    name: string,
+    isScumMaster = false
+) {
+    // Check if room exists
+    const { data: room, error: roomError } = await supabaseServer
+        .from("rooms")
+        .select("code")
+        .eq("code", code)
+        .single();
 
-  if (!room) {
-    return { success: false, error: "Room not found" }
-  }
+    if (roomError || !room) {
+        return { success: false, error: "Room not found" };
+    }
 
-  // Update last activity
-  await sql`
-    UPDATE rooms SET last_activity = NOW() WHERE code = ${code}
-  `
+    // Update last activity
+    const { error: updateError } = await supabaseServer
+        .from("rooms")
+        .update({ last_activity: new Date().toISOString() })
+        .eq("code", code);
 
-  // Add participant (or update if exists)
-  await sql`
-    INSERT INTO participants (room_code, name, is_scrum_master)
-    VALUES (${code}, ${name}, ${isScumMaster})
-    ON CONFLICT (room_code, name) 
-    DO UPDATE SET is_scrum_master = ${isScumMaster}
-  `
+    if (updateError) {
+        console.error("Error updating room activity:", updateError);
+    }
 
-  const roomData = await buildRoomObject(code)
-  return { success: true, room: roomData, participantId: name }
+    // Add participant (or update if exists)
+    const { error: participantError } = await supabaseServer
+        .from("participants")
+        .upsert(
+            {
+                room_code: code,
+                name,
+                is_scrum_master: isScumMaster,
+            },
+            {
+                onConflict: "room_code,name",
+            }
+        );
+
+    if (participantError) {
+        console.error("Error adding participant:", participantError);
+        return { success: false, error: "Failed to join room" };
+    }
+
+    const roomData = await buildRoomObject(code);
+    return { success: true, room: roomData, participantId: name };
 }
 
 export async function getRoomState(code: string) {
-  const room = await buildRoomObject(code)
-  if (!room) {
-    return { success: false, error: "Room not found" }
-  }
+    const room = await buildRoomObject(code);
+    if (!room) {
+        return { success: false, error: "Room not found" };
+    }
 
-  // Update last activity
-  await sql`
-    UPDATE rooms SET last_activity = NOW() WHERE code = ${code}
-  `
+    // Don't update last_activity here - it causes infinite loops with Realtime
+    // Only update last_activity on real actions (vote, start voting, etc.)
 
-  return { success: true, room }
+    return { success: true, room };
 }
 
-export async function submitVote(code: string, participantId: string, vote: number | null) {
-  // Update last activity
-  await sql`
-    UPDATE rooms SET last_activity = NOW() WHERE code = ${code}
-  `
+export async function submitVote(
+    code: string,
+    participantId: string,
+    vote: number | null
+) {
+    // Update last activity
+    const { error: updateError } = await supabaseServer
+        .from("rooms")
+        .update({ last_activity: new Date().toISOString() })
+        .eq("code", code);
 
-  if (vote === null) {
-    // Remove vote
-    await sql`
-      DELETE FROM votes 
-      WHERE room_code = ${code} AND participant_name = ${participantId}
-    `
-  } else {
-    // Insert or update vote
-    await sql`
-      INSERT INTO votes (room_code, participant_name, vote_value)
-      VALUES (${code}, ${participantId}, ${vote})
-      ON CONFLICT (room_code, participant_name)
-      DO UPDATE SET vote_value = ${vote}, created_at = NOW()
-    `
-  }
+    if (updateError) {
+        console.error("Error updating room activity:", updateError);
+    }
 
-  const room = await buildRoomObject(code)
-  if (!room) {
-    return { success: false, error: "Room not found" }
-  }
-  return { success: true, room }
+    if (vote === null) {
+        // Remove vote
+        const { error: deleteError } = await supabaseServer
+            .from("votes")
+            .delete()
+            .eq("room_code", code)
+            .eq("participant_name", participantId);
+
+        if (deleteError) {
+            console.error("Error deleting vote:", deleteError);
+        }
+    } else {
+        // Insert or update vote
+        const { error: voteError } = await supabaseServer.from("votes").upsert(
+            {
+                room_code: code,
+                participant_name: participantId,
+                vote_value: vote,
+                created_at: new Date().toISOString(),
+            },
+            {
+                onConflict: "room_code,participant_name",
+            }
+        );
+
+        if (voteError) {
+            console.error("Error submitting vote:", voteError);
+            return { success: false, error: "Failed to submit vote" };
+        }
+    }
+
+    const room = await buildRoomObject(code);
+    if (!room) {
+        return { success: false, error: "Room not found" };
+    }
+
+    return { success: true, room };
 }
 
 export async function revealVotes(code: string) {
-  await sql`
-    UPDATE rooms 
-    SET voting_state = 'revealed', 
-        votes_revealed = true,
-        last_activity = NOW()
-    WHERE code = ${code}
-  `
+    const { error } = await supabaseServer
+        .from("rooms")
+        .update({
+            voting_state: "revealed",
+            votes_revealed: true,
+            last_activity: new Date().toISOString(),
+        })
+        .eq("code", code);
 
-  const room = await buildRoomObject(code)
-  if (!room) {
-    return { success: false, error: "Room not found" }
-  }
-  return { success: true, room }
+    if (error) {
+        console.error("Error revealing votes:", error);
+        return { success: false, error: "Failed to reveal votes" };
+    }
+
+    const room = await buildRoomObject(code);
+    if (!room) {
+        return { success: false, error: "Room not found" };
+    }
+
+    return { success: true, room };
 }
 
-export async function startVoting(code: string, story?: Story, timerSeconds?: number) {
-  // If a new story is provided, add it to the queue
-  if (story) {
-    const [maxOrder] = await sql`
-      SELECT COALESCE(MAX(order_index), -1) as max_order
-      FROM stories WHERE room_code = ${code}
-    `
+export async function startVoting(
+    code: string,
+    story?: Story,
+    timerSeconds?: number
+) {
+    // If a new story is provided, add it to the queue
+    // This is only used when starting voting with a completely new story
+    if (story) {
+        const { data: maxOrderData } = await supabaseServer
+            .from("stories")
+            .select("order_index")
+            .eq("room_code", code)
+            .order("order_index", { ascending: false })
+            .limit(1)
+            .single();
 
-    await sql`
-      INSERT INTO stories (room_code, title, jira_link, order_index)
-      VALUES (${code}, ${story.title}, ${story.jiraLink || null}, ${maxOrder.max_order + 1})
-    `
-  }
+        const maxOrder = maxOrderData?.order_index ?? -1;
 
-  // Clear all votes
-  await sql`
-    DELETE FROM votes WHERE room_code = ${code}
-  `
+        const { error: insertError } = await supabaseServer
+            .from("stories")
+            .insert({
+                room_code: code,
+                title: story.title,
+                jira_link: story.jiraLink || null,
+                order_index: maxOrder + 1,
+            });
 
-  // Update room state
-  const timerEndTime = timerSeconds ? Date.now() + timerSeconds * 1000 : null
+        if (insertError) {
+            console.error("Error inserting story:", insertError);
+            return { success: false, error: "Failed to add story" };
+        }
+    }
 
-  await sql`
-    UPDATE rooms 
-    SET voting_state = 'voting',
-        votes_revealed = false,
-        timer_duration = ${timerSeconds || null},
-        timer_end_time = ${timerEndTime},
-        last_activity = NOW()
-    WHERE code = ${code}
-  `
+    // Clear all votes
+    const { error: deleteError } = await supabaseServer
+        .from("votes")
+        .delete()
+        .eq("room_code", code);
 
-  const room = await buildRoomObject(code)
-  if (!room) {
-    return { success: false, error: "Room not found" }
-  }
-  return { success: true, room }
+    if (deleteError) {
+        console.error("Error deleting votes:", deleteError);
+    }
+
+    // Update room state
+    const timerEndTime = timerSeconds ? Date.now() + timerSeconds * 1000 : null;
+
+    const { error: updateError } = await supabaseServer
+        .from("rooms")
+        .update({
+            voting_state: "voting",
+            votes_revealed: false,
+            timer_duration: timerSeconds || null,
+            timer_end_time: timerEndTime,
+            last_activity: new Date().toISOString(),
+        })
+        .eq("code", code);
+
+    if (updateError) {
+        console.error("Error updating room state:", updateError);
+        return { success: false, error: "Failed to start voting" };
+    }
+
+    const room = await buildRoomObject(code);
+    if (!room) {
+        return { success: false, error: "Room not found" };
+    }
+
+    return { success: true, room };
 }
 
 export async function nextStory(code: string) {
-  // Get current story index
-  const [roomData] = await sql`
-    SELECT current_story_index FROM rooms WHERE code = ${code}
-  `
+    // Get current story index
+    const { data: roomData, error: roomError } = await supabaseServer
+        .from("rooms")
+        .select("current_story_index")
+        .eq("code", code)
+        .single();
 
-  if (!roomData) {
-    return { success: false, error: "Room not found" }
-  }
+    if (roomError || !roomData) {
+        return { success: false, error: "Room not found" };
+    }
 
-  // Clear votes and move to next story
-  await sql`
-    DELETE FROM votes WHERE room_code = ${code}
-  `
+    // Clear votes and move to next story
+    const { error: deleteError } = await supabaseServer
+        .from("votes")
+        .delete()
+        .eq("room_code", code);
 
-  await sql`
-    UPDATE rooms 
-    SET current_story_index = ${roomData.current_story_index + 1},
-        voting_state = 'idle',
-        votes_revealed = false,
-        timer_duration = NULL,
-        timer_end_time = NULL,
-        last_activity = NOW()
-    WHERE code = ${code}
-  `
+    if (deleteError) {
+        console.error("Error deleting votes:", deleteError);
+    }
 
-  const room = await buildRoomObject(code)
-  if (!room) {
-    return { success: false, error: "Room not found" }
-  }
-  return { success: true, room }
+    const { error: updateError } = await supabaseServer
+        .from("rooms")
+        .update({
+            current_story_index: roomData.current_story_index + 1,
+            voting_state: "idle",
+            votes_revealed: false,
+            timer_duration: null,
+            timer_end_time: null,
+            last_activity: new Date().toISOString(),
+        })
+        .eq("code", code);
+
+    if (updateError) {
+        console.error("Error updating room:", updateError);
+        return { success: false, error: "Failed to move to next story" };
+    }
+
+    const room = await buildRoomObject(code);
+    if (!room) {
+        return { success: false, error: "Room not found" };
+    }
+
+    return { success: true, room };
 }
 
 export async function addStoryToQueue(code: string, story: Story) {
-  const [maxOrder] = await sql`
-    SELECT COALESCE(MAX(order_index), -1) as max_order
-    FROM stories WHERE room_code = ${code}
-  `
+    const { data: maxOrderData } = await supabaseServer
+        .from("stories")
+        .select("order_index")
+        .eq("room_code", code)
+        .order("order_index", { ascending: false })
+        .limit(1)
+        .single();
 
-  await sql`
-    INSERT INTO stories (room_code, title, jira_link, order_index)
-    VALUES (${code}, ${story.title}, ${story.jiraLink || null}, ${maxOrder.max_order + 1})
-  `
+    const maxOrder = maxOrderData?.order_index ?? -1;
 
-  await sql`
-    UPDATE rooms SET last_activity = NOW() WHERE code = ${code}
-  `
+    const { error: insertError } = await supabaseServer.from("stories").insert({
+        room_code: code,
+        title: story.title,
+        jira_link: story.jiraLink || null,
+        order_index: maxOrder + 1,
+    });
 
-  const room = await buildRoomObject(code)
-  if (!room) {
-    return { success: false, error: "Room not found" }
-  }
-  return { success: true, room }
+    if (insertError) {
+        console.error("Error inserting story:", insertError);
+        return { success: false, error: "Failed to add story" };
+    }
+
+    const { error: updateError } = await supabaseServer
+        .from("rooms")
+        .update({ last_activity: new Date().toISOString() })
+        .eq("code", code);
+
+    if (updateError) {
+        console.error("Error updating room activity:", updateError);
+    }
+
+    const room = await buildRoomObject(code);
+    if (!room) {
+        return { success: false, error: "Room not found" };
+    }
+
+    return { success: true, room };
 }
