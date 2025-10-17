@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { ParticipantsManager } from "./participants-manager";
 import { StoryQueueManager } from "./story-queue-manager";
+import { PublishToJira } from "./publish-to-jira";
 
 interface ScrumMasterPanelProps {
     room: Room;
@@ -123,6 +124,28 @@ export function ScrumMasterPanel({
     const onlineParticipants = room.participants.filter((p) => p.isOnline);
     const votedCount = onlineParticipants.filter((p) => p.vote !== null).length;
     const totalCount = onlineParticipants.length;
+
+    // Calculate suggested points (mode - most common vote)
+    const calculateSuggestedPoints = (): number | undefined => {
+        const votes = onlineParticipants
+            .map((p) => p.vote)
+            .filter((v) => v !== null) as number[];
+        
+        if (votes.length === 0) return undefined;
+
+        const voteCounts = new Map<number, number>();
+        votes.forEach((vote) => {
+            voteCounts.set(vote, (voteCounts.get(vote) || 0) + 1);
+        });
+
+        const mode = Array.from(voteCounts.entries()).reduce((a, b) =>
+            a[1] > b[1] ? a : b
+        )[0];
+
+        return mode;
+    };
+
+    const suggestedPoints = room.votesRevealed ? calculateSuggestedPoints() : undefined;
 
     return (
         <Card className="border-2 border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
@@ -353,6 +376,16 @@ export function ScrumMasterPanel({
                         </>
                     )}
                 </div>
+
+                {/* Jira Integration - Show when votes are revealed */}
+                {room.votesRevealed && room.currentStory && (
+                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <PublishToJira
+                            jiraLink={room.currentStory.jiraLink}
+                            suggestedPoints={suggestedPoints}
+                        />
+                    </div>
+                )}
 
                 {/* Quick Actions */}
                 {!room.currentStory && room.storyQueue.length === 0 && (

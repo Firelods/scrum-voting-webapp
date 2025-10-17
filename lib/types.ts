@@ -30,3 +30,27 @@ export interface RoomState {
     room: Room;
     currentParticipantId: string | null;
 }
+
+// Jira Integration Types
+
+export interface JiraPublishRequest {
+    baseUrl: string;
+    issueKey: string;
+    username: string;
+    pat: string;
+    storyPoints: number;
+    addComment?: boolean;
+    updateStoryPoints?: boolean;
+}
+
+export interface JiraPublishResponse {
+    success: boolean;
+    message?: string;
+    error?: string;
+    warning?: string;
+    results?: {
+        commentAdded: boolean;
+        storyPointsUpdated: boolean;
+        updatedFields?: string[];
+    };
+}
