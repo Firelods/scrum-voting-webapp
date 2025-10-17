@@ -28,7 +28,7 @@ async function buildRoomObject(code: string): Promise<Room | null> {
     const { data: participants, error: participantsError } =
         await supabaseServer
             .from("participants")
-            .select("name, is_scrum_master, last_seen")
+            .select("name, is_scrum_master")
             .eq("room_code", code)
             .order("joined_at", { ascending: true });
 
@@ -36,10 +36,6 @@ async function buildRoomObject(code: string): Promise<Room | null> {
         console.error("Error fetching participants:", participantsError);
         return null;
     }
-
-    // Determine who is online (last seen within 15 seconds)
-    const now = Date.now();
-    const onlineThreshold = 15000; // 15 seconds
 
     // Fetch votes separately
     const { data: votes, error: votesError } = await supabaseServer
@@ -85,19 +81,13 @@ async function buildRoomObject(code: string): Promise<Room | null> {
             title: s.title,
             jiraLink: s.jira_link || undefined,
         })),
-        participants: (participants || []).map((p: any) => {
-            const lastSeen = p.last_seen ? new Date(p.last_seen).getTime() : 0;
-            const isOnline = now - lastSeen < onlineThreshold;
-
-            return {
-                id: p.name,
-                name: p.name,
-                vote: voteMap.get(p.name) || null,
-                isScumMaster: p.is_scrum_master,
-                isOnline,
-                lastSeen,
-            };
-        }),
+        participants: (participants || []).map((p: any) => ({
+            id: p.name,
+            name: p.name,
+            vote: voteMap.get(p.name) || null,
+            isScumMaster: p.is_scrum_master,
+            isOnline: true, // Always true since we removed heartbeat tracking
+        })),
         votingActive: roomData.voting_state === "voting",
         votesRevealed: roomData.votes_revealed,
         timerSeconds: roomData.timer_duration,

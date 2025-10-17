@@ -16,7 +16,6 @@ export function useRealtimeRoom(
     const [isKicked, setIsKicked] = useState(false);
     const channelRef = useRef<RealtimeChannel | null>(null);
     const mutateRef = useRef<(() => Promise<void>) | null>(null);
-    const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     // Function to manually fetch room state
     const mutate = async () => {
@@ -44,47 +43,6 @@ export function useRealtimeRoom(
 
     // Keep mutate ref updated
     mutateRef.current = mutate;
-
-    // Send heartbeat to mark this participant as online
-    useEffect(() => {
-        if (!code || !participantId) return;
-
-        const sendHeartbeat = async () => {
-            try {
-                const { data, error } = await supabase
-                    .from("participants")
-                    .update({ last_seen: new Date().toISOString() })
-                    .eq("room_code", code)
-                    .eq("name", participantId)
-                    .select();
-
-                // If no rows were updated, the participant was removed
-                if (!error && (!data || data.length === 0)) {
-                    console.warn("⚠️ Participant no longer exists in room");
-                    setIsKicked(true);
-                }
-                
-                if (error) {
-                    console.error("Heartbeat error:", error);
-                }
-            } catch (error) {
-                console.error("Heartbeat error:", error);
-            }
-        };
-
-        // Send initial heartbeat
-        sendHeartbeat();
-
-        // Send heartbeat every 5 seconds
-        const interval = setInterval(sendHeartbeat, 5000);
-        heartbeatIntervalRef.current = interval;
-
-        return () => {
-            if (heartbeatIntervalRef.current) {
-                clearInterval(heartbeatIntervalRef.current);
-            }
-        };
-    }, [code, participantId]);
 
     useEffect(() => {
         if (!code) {
