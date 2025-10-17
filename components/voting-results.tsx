@@ -101,7 +101,7 @@ export function VotingResults({ room }: VotingResultsProps) {
                 <div className="grid grid-cols-3 gap-4">
                     <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg text-center">
                         <div className="flex items-center justify-center gap-2 mb-1">
-                            <TrendingUp className="w-4 h-4 text-blue-600" />
+                            <TrendingUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                 Average
                             </span>
@@ -112,7 +112,7 @@ export function VotingResults({ room }: VotingResultsProps) {
                     </div>
                     <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg text-center">
                         <div className="flex items-center justify-center gap-2 mb-1">
-                            <Target className="w-4 h-4 text-purple-600" />
+                            <Target className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                 Median
                             </span>
@@ -123,7 +123,7 @@ export function VotingResults({ room }: VotingResultsProps) {
                     </div>
                     <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg text-center">
                         <div className="flex items-center justify-center gap-2 mb-1">
-                            <Users className="w-4 h-4 text-green-600" />
+                            <Users className="w-4 h-4 text-green-600 dark:text-green-400" />
                             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                 Most Common
                             </span>
@@ -196,8 +196,8 @@ export function VotingResults({ room }: VotingResultsProps) {
                         <div
                             className={`h-3 rounded-full transition-all duration-300 ${
                                 consensusPercentage >= 70
-                                    ? "bg-green-500"
-                                    : "bg-yellow-500"
+                                    ? "bg-green-500 dark:bg-green-600"
+                                    : "bg-yellow-500 dark:bg-yellow-600"
                             }`}
                             style={{ width: `${consensusPercentage}%` }}
                         />

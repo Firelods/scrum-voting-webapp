@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { getRoomState } from "@/app/actions/room-actions";
 import type { Room } from "@/lib/types";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { logger } from "@/lib/logger";
 
 export function useRealtimeRoom(
     code: string | null,
@@ -31,13 +32,13 @@ export function useRealtimeRoom(
                         (p) => p.id === participantId
                     );
                     if (!participantExists) {
-                        console.warn("⚠️ Participant has been kicked from the room");
+                        logger.warn("⚠️ Participant has been kicked from the room");
                         setIsKicked(true);
                     }
                 }
             }
         } catch (error) {
-            console.error("Failed to fetch room state:", error);
+            logger.error("Failed to fetch room state:", error);
         }
     };
 
@@ -63,7 +64,7 @@ export function useRealtimeRoom(
                     setIsError(true);
                 }
             } catch (error) {
-                console.error("Failed to fetch initial room state:", error);
+                logger.error("Failed to fetch initial room state:", error);
                 setIsError(true);
             } finally {
                 setIsLoading(false);
@@ -86,7 +87,7 @@ export function useRealtimeRoom(
                     filter: `code=eq.${code}`,
                 },
                 async (payload) => {
-                    console.log("🏠 Room change detected:", payload);
+                    logger.log("🏠 Room change detected:", payload);
                     // Refetch room state when any change is detected
                     await mutateRef.current?.();
                 }
@@ -100,7 +101,7 @@ export function useRealtimeRoom(
                     filter: `room_code=eq.${code}`,
                 },
                 async (payload: any) => {
-                    console.log("🗳️ Vote change detected:", payload);
+                    logger.log("🗳️ Vote change detected:", payload);
                     await mutateRef.current?.();
                 }
             )
@@ -113,7 +114,7 @@ export function useRealtimeRoom(
                     filter: `room_code=eq.${code}`,
                 },
                 async (payload: any) => {
-                    console.log("👥 Participant change detected:", payload);
+                    logger.log("👥 Participant change detected:", payload);
                     await mutateRef.current?.();
                 }
             )
@@ -126,25 +127,25 @@ export function useRealtimeRoom(
                     filter: `room_code=eq.${code}`,
                 },
                 async (payload: any) => {
-                    console.log("📖 Story change detected:", payload);
+                    logger.log("📖 Story change detected:", payload);
                     await mutateRef.current?.();
                 }
             )
             .subscribe((status) => {
-                console.log(
+                logger.log(
                     `Realtime subscription status for room ${code}:`,
                     status
                 );
                 if (status === "SUBSCRIBED") {
-                    console.log(
+                    logger.log(
                         "✅ Successfully subscribed to realtime updates"
                     );
                 } else if (status === "CHANNEL_ERROR") {
-                    console.error("❌ Error subscribing to realtime channel");
+                    logger.error("❌ Error subscribing to realtime channel");
                 } else if (status === "TIMED_OUT") {
-                    console.error("⏱️ Subscription timed out");
+                    logger.error("⏱️ Subscription timed out");
                 } else if (status === "CLOSED") {
-                    console.log("🔒 Channel closed");
+                    logger.log("🔒 Channel closed");
                 }
             });
 
@@ -152,7 +153,7 @@ export function useRealtimeRoom(
 
         // Cleanup on unmount
         return () => {
-            console.log(`Unsubscribing from room ${code}`);
+            logger.log(`Unsubscribing from room ${code}`);
             if (channelRef.current) {
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;

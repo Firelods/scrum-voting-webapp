@@ -31,7 +31,7 @@ export function ParticipantList({
                         >
                             <div className="flex items-center gap-2">
                                 {participant.isScumMaster && (
-                                    <Crown className="w-4 h-4 text-yellow-500" />
+                                    <Crown className="w-4 h-4 text-yellow-500 dark:text-yellow-400" />
                                 )}
                                 <span className="font-medium text-gray-900 dark:text-white">
                                     {participant.name}
@@ -50,11 +50,11 @@ export function ParticipantList({
                                 {/* Sinon afficher juste le statut voté/pas voté */}
                                 {!votesRevealed &&
                                     participant.vote !== null && (
-                                        <Check className="w-5 h-5 text-green-500" />
+                                        <Check className="w-5 h-5 text-green-500 dark:text-green-400" />
                                     )}
                                 {!votesRevealed &&
                                     participant.vote === null && (
-                                        <Clock className="w-5 h-5 text-gray-400" />
+                                        <Clock className="w-5 h-5 text-gray-400 dark:text-gray-500" />
                                     )}
                             </div>
                         </div>

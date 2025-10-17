@@ -45,11 +45,11 @@ export function VotingTimer({ timerSeconds, timerStartedAt, votingActive }: Voti
     <Card className={cn("border-2", isLowTime ? "border-red-500 animate-pulse" : "border-blue-500")}>
       <CardContent className="p-4">
         <div className="flex items-center gap-4">
-          <Clock className={cn("w-6 h-6", isLowTime ? "text-red-500" : "text-blue-600")} />
+          <Clock className={cn("w-6 h-6", isLowTime ? "text-red-500 dark:text-red-400" : "text-blue-600 dark:text-blue-400")} />
           <div className="flex-1">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Time Remaining</span>
-              <span className={cn("text-2xl font-bold", isLowTime ? "text-red-500" : "text-gray-900 dark:text-white")}>
+              <span className={cn("text-2xl font-bold", isLowTime ? "text-red-500 dark:text-red-400" : "text-gray-900 dark:text-white")}>
                 {minutes}:{seconds.toString().padStart(2, "0")}
               </span>
             </div>
@@ -57,7 +57,7 @@ export function VotingTimer({ timerSeconds, timerStartedAt, votingActive }: Voti
               <div
                 className={cn(
                   "h-2 rounded-full transition-all duration-1000",
-                  isLowTime ? "bg-red-500" : "bg-blue-500",
+                  isLowTime ? "bg-red-500 dark:bg-red-600" : "bg-blue-500 dark:bg-blue-600",
                 )}
                 style={{ width: `${percentage}%` }}
               />

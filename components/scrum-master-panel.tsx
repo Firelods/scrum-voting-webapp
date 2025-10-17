@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Loader } from "@/components/ui/loader";
 import {
     Dialog,
     DialogContent,
@@ -21,6 +22,7 @@ import {
     addStoryToQueue,
 } from "@/app/actions/room-actions";
 import type { Room } from "@/lib/types";
+import { logger } from "@/lib/logger";
 import {
     Play,
     Eye,
@@ -50,34 +52,47 @@ export function ScrumMasterPanel({
     const [timerMinutes, setTimerMinutes] = useState<number>(2);
     const [showParticipants, setShowParticipants] = useState(false);
     const [showStoryQueue, setShowStoryQueue] = useState(false);
+    const [isStartingVote, setIsStartingVote] = useState(false);
+    const [isRevealing, setIsRevealing] = useState(false);
+    const [isMovingNext, setIsMovingNext] = useState(false);
+    const [isAddingToQueue, setIsAddingToQueue] = useState(false);
 
     const handleStartVoting = async () => {
+        setIsStartingVote(true);
         try {
             const timerSeconds =
                 timerMinutes > 0 ? timerMinutes * 60 : undefined;
             // Ne pas passer currentStory car elle est déjà dans la queue
             await startVoting(room.code, undefined, timerSeconds);
-            onUpdate();
+            await onUpdate();
         } catch (error) {
-            console.error("Failed to start voting:", error);
+            logger.error("Failed to start voting:", error);
+        } finally {
+            setIsStartingVote(false);
         }
     };
 
     const handleRevealVotes = async () => {
+        setIsRevealing(true);
         try {
             await revealVotes(room.code);
-            onUpdate();
+            await onUpdate();
         } catch (error) {
-            console.error("Failed to reveal votes:", error);
+            logger.error("Failed to reveal votes:", error);
+        } finally {
+            setIsRevealing(false);
         }
     };
 
     const handleNextStory = async () => {
+        setIsMovingNext(true);
         try {
             await nextStory(room.code);
-            onUpdate();
+            await onUpdate();
         } catch (error) {
-            console.error("Failed to move to next story:", error);
+            logger.error("Failed to move to next story:", error);
+        } finally {
+            setIsMovingNext(false);
         }
     };
 
@@ -85,6 +100,7 @@ export function ScrumMasterPanel({
         e.preventDefault();
         if (!storyTitle.trim()) return;
 
+        setIsAddingToQueue(true);
         try {
             const story = {
                 id: `story-${Date.now()}`,
@@ -95,9 +111,11 @@ export function ScrumMasterPanel({
             setStoryTitle("");
             setJiraLink("");
             setIsAddingStory(false);
-            onUpdate();
+            await onUpdate();
         } catch (error) {
-            console.error("Failed to add story:", error);
+            logger.error("Failed to add story:", error);
+        } finally {
+            setIsAddingToQueue(false);
         }
     };
 
@@ -126,7 +144,7 @@ export function ScrumMasterPanel({
                     </div>
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                         <div
-                            className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                            className="bg-green-500 dark:bg-green-600 h-2 rounded-full transition-all duration-300"
                             style={{
                                 width: `${
                                     totalCount > 0
@@ -169,10 +187,19 @@ export function ScrumMasterPanel({
                                 onClick={handleStartVoting}
                                 className="w-full"
                                 size="lg"
-                                disabled={!room.currentStory}
+                                disabled={!room.currentStory || isStartingVote}
                             >
-                                <Play className="w-4 h-4 mr-2" />
-                                Start Voting
+                                {isStartingVote ? (
+                                    <>
+                                        <Loader size="sm" className="mr-2" />
+                                        Starting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Play className="w-4 h-4 mr-2" />
+                                        Start Voting
+                                    </>
+                                )}
                             </Button>
                             <Dialog
                                 open={isAddingStory}
@@ -234,8 +261,16 @@ export function ScrumMasterPanel({
                                             <Button
                                                 type="submit"
                                                 className="flex-1"
+                                                disabled={isAddingToQueue}
                                             >
-                                                Add to Queue
+                                                {isAddingToQueue ? (
+                                                    <>
+                                                        <Loader size="sm" className="mr-2" />
+                                                        Adding...
+                                                    </>
+                                                ) : (
+                                                    "Add to Queue"
+                                                )}
                                             </Button>
                                             <Button
                                                 type="button"
@@ -243,6 +278,7 @@ export function ScrumMasterPanel({
                                                 onClick={() =>
                                                     setIsAddingStory(false)
                                                 }
+                                                disabled={isAddingToQueue}
                                             >
                                                 Cancel
                                             </Button>
@@ -259,9 +295,19 @@ export function ScrumMasterPanel({
                             className="w-full col-span-2"
                             size="lg"
                             variant="default"
+                            disabled={isRevealing}
                         >
-                            <Eye className="w-4 h-4 mr-2" />
-                            Reveal Votes
+                            {isRevealing ? (
+                                <>
+                                    <Loader size="sm" className="mr-2" />
+                                    Revealing...
+                                </>
+                            ) : (
+                                <>
+                                    <Eye className="w-4 h-4 mr-2" />
+                                    Reveal Votes
+                                </>
+                            )}
                         </Button>
                     )}
 
@@ -271,18 +317,38 @@ export function ScrumMasterPanel({
                                 onClick={handleNextStory}
                                 className="w-full"
                                 size="lg"
+                                disabled={isMovingNext}
                             >
-                                <SkipForward className="w-4 h-4 mr-2" />
-                                Next Story
+                                {isMovingNext ? (
+                                    <>
+                                        <Loader size="sm" className="mr-2" />
+                                        Loading...
+                                    </>
+                                ) : (
+                                    <>
+                                        <SkipForward className="w-4 h-4 mr-2" />
+                                        Next Story
+                                    </>
+                                )}
                             </Button>
                             <Button
                                 onClick={handleStartVoting}
                                 variant="outline"
                                 className="w-full bg-transparent"
                                 size="lg"
+                                disabled={isStartingVote}
                             >
-                                <RotateCcw className="w-4 h-4 mr-2" />
-                                Re-vote
+                                {isStartingVote ? (
+                                    <>
+                                        <Loader size="sm" className="mr-2" />
+                                        Starting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <RotateCcw className="w-4 h-4 mr-2" />
+                                        Re-vote
+                                    </>
+                                )}
                             </Button>
                         </>
                     )}

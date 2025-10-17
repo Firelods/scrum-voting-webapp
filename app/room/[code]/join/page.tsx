@@ -10,6 +10,7 @@ import { Loader } from "@/components/ui/loader";
 import { Badge } from "@/components/ui/badge";
 import { joinRoom } from "@/app/actions/room-actions";
 import { Users } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 export default function JoinRoomPage({
     params,
@@ -49,7 +50,7 @@ export default function JoinRoomPage({
                 alert(result.error || "Failed to join room");
             }
         } catch (error) {
-            console.error("Failed to join room:", error);
+            logger.error("Failed to join room:", error);
             alert("Failed to join room");
         } finally {
             setIsJoining(false);
@@ -61,7 +62,7 @@ export default function JoinRoomPage({
             <Card className="w-full max-w-md border-2">
                 <CardHeader>
                     <div className="flex items-center justify-center gap-3 mb-2">
-                        <Users className="w-8 h-8 text-blue-600" />
+                        <Users className="w-8 h-8 text-blue-600 dark:text-blue-400" />
                         <CardTitle className="text-2xl">
                             Join Scrum Poker Room
                         </CardTitle>
