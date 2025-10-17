@@ -350,7 +350,11 @@ export default function RoomPage({
                     <div className="lg:col-span-2 space-y-6">
                         {/* Scrum Master Panel */}
                         {isScumMaster && (
-                            <ScrumMasterPanel room={room} onUpdate={mutate} />
+                            <ScrumMasterPanel
+                                room={room}
+                                onUpdate={mutate}
+                                currentUserId={participantId || undefined}
+                            />
                         )}
 
                         {/* Voting Results */}

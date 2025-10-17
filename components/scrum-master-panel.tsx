@@ -21,18 +21,35 @@ import {
     addStoryToQueue,
 } from "@/app/actions/room-actions";
 import type { Room } from "@/lib/types";
-import { Play, Eye, SkipForward, Plus, RotateCcw } from "lucide-react";
+import {
+    Play,
+    Eye,
+    SkipForward,
+    Plus,
+    RotateCcw,
+    Users,
+    List,
+} from "lucide-react";
+import { ParticipantsManager } from "./participants-manager";
+import { StoryQueueManager } from "./story-queue-manager";
 
 interface ScrumMasterPanelProps {
     room: Room;
     onUpdate: () => void;
+    currentUserId?: string;
 }
 
-export function ScrumMasterPanel({ room, onUpdate }: ScrumMasterPanelProps) {
+export function ScrumMasterPanel({
+    room,
+    onUpdate,
+    currentUserId,
+}: ScrumMasterPanelProps) {
     const [isAddingStory, setIsAddingStory] = useState(false);
     const [storyTitle, setStoryTitle] = useState("");
     const [jiraLink, setJiraLink] = useState("");
     const [timerMinutes, setTimerMinutes] = useState<number>(2);
+    const [showParticipants, setShowParticipants] = useState(false);
+    const [showStoryQueue, setShowStoryQueue] = useState(false);
 
     const handleStartVoting = async () => {
         try {
@@ -297,6 +314,60 @@ export function ScrumMasterPanel({ room, onUpdate }: ScrumMasterPanelProps) {
                         </p>
                     </div>
                 )}
+
+                {/* Advanced Management Buttons */}
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+                    <Dialog
+                        open={showParticipants}
+                        onOpenChange={setShowParticipants}
+                    >
+                        <DialogTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                            >
+                                <Users className="w-4 h-4 mr-2" />
+                                Manage Participants
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl">
+                            <DialogHeader>
+                                <DialogTitle>Manage Participants</DialogTitle>
+                            </DialogHeader>
+                            <ParticipantsManager
+                                roomCode={room.code}
+                                participants={room.participants}
+                                currentUserId={currentUserId}
+                            />
+                        </DialogContent>
+                    </Dialog>
+
+                    <Dialog
+                        open={showStoryQueue}
+                        onOpenChange={setShowStoryQueue}
+                    >
+                        <DialogTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                            >
+                                <List className="w-4 h-4 mr-2" />
+                                Manage Queue
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                            <DialogHeader>
+                                <DialogTitle>Manage Story Queue</DialogTitle>
+                            </DialogHeader>
+                            <StoryQueueManager
+                                roomCode={room.code}
+                                stories={room.storyQueue}
+                            />
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </CardContent>
         </Card>
     );
