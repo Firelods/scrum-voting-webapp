@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Loader } from "@/components/ui/loader";
 import { joinRoom } from "@/app/actions/room-actions";
 import { Copy, Check } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 export default function RoomSetupPage({
     params,
@@ -64,7 +65,7 @@ export default function RoomSetupPage({
                 alert(result.error || "Failed to join room");
             }
         } catch (error) {
-            console.error("Failed to join room:", error);
+            logger.error("Failed to join room:", error);
         } finally {
             setIsJoining(false);
         }

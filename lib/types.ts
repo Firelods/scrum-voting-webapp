@@ -5,8 +5,7 @@ export interface Participant {
     name: string;
     vote: FibonacciValue;
     isScumMaster: boolean;
-    isOnline?: boolean;
-    lastSeen?: number;
+    isOnline: boolean;
 }
 
 export interface Story {

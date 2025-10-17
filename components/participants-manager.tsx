@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { UserX, Crown, User } from "lucide-react";
 import { kickParticipant } from "@/app/actions/room-actions";
+import { logger } from "@/lib/logger";
 import {
     Dialog,
     DialogContent,
@@ -44,7 +45,7 @@ export function ParticipantsManager({
                 alert(result.error || "Failed to kick participant");
             }
         } catch (error) {
-            console.error("Failed to kick participant:", error);
+            logger.error("Failed to kick participant:", error);
             alert("Failed to kick participant");
         } finally {
             setIsKicking(false);
@@ -67,9 +68,9 @@ export function ParticipantsManager({
                             >
                                 <div className="flex items-center gap-3">
                                     {participant.isScumMaster ? (
-                                        <Crown className="w-5 h-5 text-yellow-500" />
+                                        <Crown className="w-5 h-5 text-yellow-500 dark:text-yellow-400" />
                                     ) : (
-                                        <User className="w-5 h-5 text-gray-400" />
+                                        <User className="w-5 h-5 text-gray-400 dark:text-gray-500" />
                                     )}
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-2">
@@ -144,7 +145,7 @@ export function ParticipantsManager({
                         <Button
                             onClick={() => kickingName && handleKick(kickingName)}
                             disabled={isKicking}
-                            className="bg-red-600 hover:bg-red-700"
+                            className="bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 text-white"
                         >
                             {isKicking ? "Kicking..." : "Kick"}
                         </Button>

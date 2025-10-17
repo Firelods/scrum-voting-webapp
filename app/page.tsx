@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Loader } from "@/components/ui/loader";
 import { createRoom, joinRoom } from "./actions/room-actions";
 import { Users, Plus, LogIn } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 export default function HomePage() {
     const router = useRouter();
@@ -36,7 +37,7 @@ export default function HomePage() {
                 router.push(`/room/${result.room.code}/setup`);
             }
         } catch (error) {
-            console.error("Failed to create room:", error);
+            logger.error("Failed to create room:", error);
         } finally {
             setIsCreating(false);
         }
@@ -65,7 +66,7 @@ export default function HomePage() {
                 alert(result.error || "Failed to join room");
             }
         } catch (error) {
-            console.error("Failed to join room:", error);
+            logger.error("Failed to join room:", error);
             alert("Failed to join room");
         } finally {
             setIsJoining(false);
@@ -78,7 +79,7 @@ export default function HomePage() {
                 {/* Header */}
                 <div className="text-center mb-12">
                     <div className="flex items-center justify-center gap-3 mb-4">
-                        <Users className="w-12 h-12 text-blue-600" />
+                        <Users className="w-12 h-12 text-blue-600 dark:text-blue-400" />
                         <h1 className="text-5xl font-bold text-gray-900 dark:text-white">
                             Scrum Poker
                         </h1>
@@ -94,7 +95,7 @@ export default function HomePage() {
                     <Card className="border-2 hover:border-blue-500 transition-colors">
                         <CardHeader>
                             <div className="flex items-center gap-2 mb-2">
-                                <Plus className="w-6 h-6 text-blue-600" />
+                                <Plus className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                                 <CardTitle className="text-2xl">
                                     Create Room
                                 </CardTitle>
@@ -136,7 +137,7 @@ export default function HomePage() {
                     <Card className="border-2 hover:border-green-500 transition-colors">
                         <CardHeader>
                             <div className="flex items-center gap-2 mb-2">
-                                <LogIn className="w-6 h-6 text-green-600" />
+                                <LogIn className="w-6 h-6 text-green-600 dark:text-green-400" />
                                 <CardTitle className="text-2xl">
                                     Join Room
                                 </CardTitle>

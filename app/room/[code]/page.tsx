@@ -18,6 +18,7 @@ import { VotingTimer } from "@/components/voting-timer";
 import { ConfettiCelebration } from "@/components/confetti-celebration";
 import { PresenceDebug } from "@/components/presence-debug";
 import { KickedNotification } from "@/components/kicked-notification";
+import { logger } from "@/lib/logger";
 
 const FIBONACCI_VALUES: FibonacciValue[] = [0, 1, 2, 3, 5, 8, 13, 20, 40, 100];
 
@@ -38,6 +39,7 @@ export default function RoomPage({
     const [copiedLink, setCopiedLink] = useState(false);
     const [showConfetti, setShowConfetti] = useState(false);
     const [confettiEnabled, setConfettiEnabled] = useState(true);
+    const [isSubmittingVote, setIsSubmittingVote] = useState(false);
 
     // Load confetti preference from localStorage
     useEffect(() => {
@@ -84,14 +86,17 @@ export default function RoomPage({
     };
 
     const handleVote = async (value: FibonacciValue) => {
-        if (!participantId || !room?.votingActive) return;
+        if (!participantId || !room?.votingActive || isSubmittingVote) return;
 
         setSelectedVote(value);
+        setIsSubmittingVote(true);
         try {
             await submitVote(code, participantId, value);
-            mutate();
+            await mutate();
         } catch (error) {
-            console.error("Failed to submit vote:", error);
+            logger.error("Failed to submit vote:", error);
+        } finally {
+            setIsSubmittingVote(false);
         }
     };
 
@@ -146,7 +151,7 @@ export default function RoomPage({
                                     <div className="flex justify-center items-center py-12">
                                         <Loader
                                             size="lg"
-                                            className="text-blue-600"
+                                            className="text-blue-600 dark:text-blue-400"
                                         />
                                     </div>
                                 </CardContent>
@@ -221,7 +226,7 @@ export default function RoomPage({
                             </span>
                             <Badge
                                 variant="outline"
-                                className="text-lg font-mono px-3 py-1"
+                                className="text-lg font-mono px-3 py-1 dark:text-white"
                             >
                                 {code}
                             </Badge>
@@ -294,8 +299,8 @@ export default function RoomPage({
                                 <Settings
                                     className={`w-4 h-4 ${
                                         confettiEnabled
-                                            ? "text-green-600"
-                                            : "text-gray-400"
+                                            ? "text-green-600 dark:text-green-400"
+                                            : "text-gray-400 dark:text-gray-500"
                                     }`}
                                 />
                             </Button>
@@ -319,19 +324,19 @@ export default function RoomPage({
                             <CardTitle className="flex items-center justify-between">
                                 <span>Current Story</span>
                                 {room.votingActive && (
-                                    <Badge className="bg-green-500">
+                                    <Badge className="bg-green-500 dark:bg-green-600 text-white">
                                         Voting Active
                                     </Badge>
                                 )}
                                 {room.votesRevealed && (
-                                    <Badge className="bg-blue-500">
+                                    <Badge className="bg-blue-500 dark:bg-blue-600 text-white">
                                         Votes Revealed
                                     </Badge>
                                 )}
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
+                            <h2 className="text-2xl font-semibold text-gray-900 mb-2">
                                 {room.currentStory.title}
                             </h2>
                             {room.currentStory.jiraLink && (
@@ -339,7 +344,7 @@ export default function RoomPage({
                                     href={room.currentStory.jiraLink}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-700 dark:text-blue-400 flex items-center gap-1 text-sm"
+                                    className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 text-sm"
                                 >
                                     View in Jira{" "}
                                     <ExternalLink className="w-4 h-4" />
@@ -381,7 +386,12 @@ export default function RoomPage({
                                 )}
 
                                 {room.votingActive && (
-                                    <div className="flex flex-wrap justify-center gap-3 md:gap-4">
+                                    <div className="relative flex flex-wrap justify-center gap-3 md:gap-4">
+                                        {isSubmittingVote && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-800/50 rounded-lg z-10">
+                                                <Loader size="md" className="text-blue-600 dark:text-blue-400" />
+                                            </div>
+                                        )}
                                         {FIBONACCI_VALUES.map((value) => (
                                             <FibonacciCard
                                                 key={value}
@@ -392,7 +402,7 @@ export default function RoomPage({
                                                 onClick={() =>
                                                     handleVote(value)
                                                 }
-                                                disabled={!room.votingActive}
+                                                disabled={!room.votingActive || isSubmittingVote}
                                             />
                                         ))}
                                     </div>
@@ -467,7 +477,7 @@ export default function RoomPage({
                                                                 }
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 flex items-center gap-1 mt-1"
+                                                                className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 mt-1"
                                                             >
                                                                 Jira{" "}
                                                                 <ExternalLink className="w-3 h-3" />
