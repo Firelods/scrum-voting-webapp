@@ -49,7 +49,7 @@ export function VotingTimer({ timerSeconds, timerStartedAt, votingActive }: Voti
           <div className="flex-1">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Time Remaining</span>
-              <span className={cn("text-2xl font-bold", isLowTime ? "text-red-500 dark:text-red-400" : "text-gray-900 dark:text-white")}>
+              <span className={cn("text-2xl font-bold", isLowTime ? "text-red-500 dark:text-red-400" : "text-gray-900")}>
                 {minutes}:{seconds.toString().padStart(2, "0")}
               </span>
             </div>

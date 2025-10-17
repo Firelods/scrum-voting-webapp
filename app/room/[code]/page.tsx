@@ -226,7 +226,7 @@ export default function RoomPage({
                             </span>
                             <Badge
                                 variant="outline"
-                                className="text-lg font-mono px-3 py-1"
+                                className="text-lg font-mono px-3 py-1 dark:text-white"
                             >
                                 {code}
                             </Badge>
@@ -336,7 +336,7 @@ export default function RoomPage({
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
+                            <h2 className="text-2xl font-semibold text-gray-900 mb-2">
                                 {room.currentStory.title}
                             </h2>
                             {room.currentStory.jiraLink && (
