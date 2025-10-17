@@ -163,7 +163,11 @@ export async function POST(request: NextRequest) {
         if (body.updateStoryPoints !== false) {
             try {
                 // Get the custom field IDs from environment variable (comma-separated)
-                const storyPointsFieldsEnv = process.env.JIRA_STORY_POINTS_FIELDS || "customfield_10166";
+                // Try NEXT_PUBLIC_ version first (for consistency), then fall back to non-public
+                const storyPointsFieldsEnv = 
+                    process.env.NEXT_PUBLIC_JIRA_STORY_POINTS_FIELDS || 
+                    process.env.JIRA_STORY_POINTS_FIELDS || 
+                    "customfield_10166";
                 const storyPointsFieldIds = storyPointsFieldsEnv
                     .split(",")
                     .map(field => field.trim())

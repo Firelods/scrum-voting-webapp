@@ -16,6 +16,7 @@ import { Loader } from "@/components/ui/loader";
 import { Badge } from "@/components/ui/badge";
 import { ExternalLink, Upload, AlertCircle, CheckCircle } from "lucide-react";
 import { logger } from "@/lib/logger";
+import { publishVoteToJira } from "@/lib/jira-client";
 
 interface PublishToJiraProps {
     /** The current story's Jira link (if any) */
@@ -97,12 +98,14 @@ export function PublishToJira({ jiraLink, suggestedPoints }: PublishToJiraProps)
         setErrorMessage("");
 
         try {
-            const response = await fetch("/api/jira/publish-vote", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
+            // Check if we should use client-side or server-side API
+            const jiraMode = process.env.NEXT_PUBLIC_JIRA_MODE || "client";
+            
+            let result;
+            
+            if (jiraMode === "client") {
+                // Direct call from browser (works with corporate proxy/VPN)
+                result = await publishVoteToJira({
                     baseUrl: formData.baseUrl,
                     issueKey: formData.issueKey,
                     username: formData.username,
@@ -110,14 +113,36 @@ export function PublishToJira({ jiraLink, suggestedPoints }: PublishToJiraProps)
                     storyPoints: Number(formData.storyPoints),
                     addComment: formData.addComment,
                     updateStoryPoints: formData.updateStoryPoints,
-                }),
-            });
-
-            const result = await response.json();
+                });
+            } else {
+                // Server-side API route (may not work behind proxy)
+                const response = await fetch("/api/jira/publish-vote", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        baseUrl: formData.baseUrl,
+                        issueKey: formData.issueKey,
+                        username: formData.username,
+                        pat: formData.pat,
+                        storyPoints: Number(formData.storyPoints),
+                        addComment: formData.addComment,
+                        updateStoryPoints: formData.updateStoryPoints,
+                    }),
+                });
+                
+                result = await response.json();
+            }
 
             if (result.success) {
                 setPublishStatus("success");
                 logger.info(`Successfully published to Jira: ${formData.issueKey}`);
+                
+                // Show warning if present
+                if (result.warning) {
+                    logger.warn(result.warning);
+                }
                 
                 // Clear sensitive data after success
                 setFormData((prev) => ({
