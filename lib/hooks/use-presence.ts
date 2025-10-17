@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { logger } from "@/lib/logger";
 
 /**
  * Hook to track user presence in a room using Supabase Realtime Presence
@@ -26,13 +27,13 @@ export function usePresence(
         channel
             .on("presence", { event: "sync" }, () => {
                 const state = channel.presenceState();
-                console.log("👤 Presence sync:", state);
+                logger.log("👤 Presence sync:", state);
             })
             .on("presence", { event: "join" }, ({ key, newPresences }) => {
-                console.log("✅ User joined:", key, newPresences);
+                logger.log("✅ User joined:", key, newPresences);
             })
             .on("presence", { event: "leave" }, ({ key, leftPresences }) => {
-                console.log("❌ User left:", key, leftPresences);
+                logger.log("❌ User left:", key, leftPresences);
             })
             .subscribe(async (status) => {
                 if (status === "SUBSCRIBED") {
