@@ -419,3 +419,162 @@ export async function addStoryToQueue(code: string, story: Story) {
 
     return { success: true, room };
 }
+
+export async function reorderStories(
+    code: string,
+    storyIds: string[]
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        // Update order_index for each story
+        const updatePromises = storyIds.map((storyId, index) =>
+            supabaseServer
+                .from("stories")
+                .update({ order_index: index })
+                .eq("id", parseInt(storyId))
+                .eq("room_code", code)
+        );
+
+        const results = await Promise.all(updatePromises);
+
+        // Check if any update failed
+        const failedUpdate = results.find((result) => result.error);
+        if (failedUpdate?.error) {
+            console.error("Error reordering stories:", failedUpdate.error);
+            return { success: false, error: "Failed to reorder stories" };
+        }
+
+        // Update last activity
+        const { error: updateError } = await supabaseServer
+            .from("rooms")
+            .update({ last_activity: new Date().toISOString() })
+            .eq("code", code);
+
+        if (updateError) {
+            console.error("Error updating room activity:", updateError);
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to reorder stories:", error);
+        return { success: false, error: "Failed to reorder stories" };
+    }
+}
+
+export async function kickParticipant(
+    code: string,
+    participantName: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        // Check if the participant is a scrum master
+        const { data: participant, error: fetchError } = await supabaseServer
+            .from("participants")
+            .select("is_scrum_master")
+            .eq("room_code", code)
+            .eq("name", participantName)
+            .single();
+
+        if (fetchError) {
+            console.error("Error fetching participant:", fetchError);
+            return { success: false, error: "Participant not found" };
+        }
+
+        if (participant?.is_scrum_master) {
+            return { success: false, error: "Cannot kick Scrum Master" };
+        }
+
+        // Delete participant's votes
+        const { error: votesError } = await supabaseServer
+            .from("votes")
+            .delete()
+            .eq("room_code", code)
+            .eq("participant_name", participantName);
+
+        if (votesError) {
+            console.error("Error deleting votes:", votesError);
+        }
+
+        // Delete participant
+        const { error: deleteError } = await supabaseServer
+            .from("participants")
+            .delete()
+            .eq("room_code", code)
+            .eq("name", participantName);
+
+        if (deleteError) {
+            console.error("Error deleting participant:", deleteError);
+            return { success: false, error: "Failed to kick participant" };
+        }
+
+        // Update last activity
+        const { error: updateError } = await supabaseServer
+            .from("rooms")
+            .update({ last_activity: new Date().toISOString() })
+            .eq("code", code);
+
+        if (updateError) {
+            console.error("Error updating room activity:", updateError);
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to kick participant:", error);
+        return { success: false, error: "Failed to kick participant" };
+    }
+}
+
+export async function deleteStory(
+    code: string,
+    storyId: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        // Delete the story
+        const { error: deleteError } = await supabaseServer
+            .from("stories")
+            .delete()
+            .eq("id", parseInt(storyId))
+            .eq("room_code", code);
+
+        if (deleteError) {
+            console.error("Error deleting story:", deleteError);
+            return { success: false, error: "Failed to delete story" };
+        }
+
+        // Reorder remaining stories
+        const { data: stories, error: fetchError } = await supabaseServer
+            .from("stories")
+            .select("id")
+            .eq("room_code", code)
+            .order("order_index", { ascending: true });
+
+        if (fetchError) {
+            console.error("Error fetching stories:", fetchError);
+            return { success: false, error: "Failed to reorder stories" };
+        }
+
+        if (stories && stories.length > 0) {
+            const updatePromises = stories.map((story: any, index: number) =>
+                supabaseServer
+                    .from("stories")
+                    .update({ order_index: index })
+                    .eq("id", story.id)
+            );
+
+            await Promise.all(updatePromises);
+        }
+
+        // Update last activity
+        const { error: updateError } = await supabaseServer
+            .from("rooms")
+            .update({ last_activity: new Date().toISOString() })
+            .eq("code", code);
+
+        if (updateError) {
+            console.error("Error updating room activity:", updateError);
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to delete story:", error);
+        return { success: false, error: "Failed to delete story" };
+    }
+}
