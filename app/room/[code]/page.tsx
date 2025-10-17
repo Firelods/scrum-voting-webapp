@@ -17,6 +17,7 @@ import { VotingResults } from "@/components/voting-results";
 import { VotingTimer } from "@/components/voting-timer";
 import { ConfettiCelebration } from "@/components/confetti-celebration";
 import { PresenceDebug } from "@/components/presence-debug";
+import { KickedNotification } from "@/components/kicked-notification";
 
 const FIBONACCI_VALUES: FibonacciValue[] = [0, 1, 2, 3, 5, 8, 13, 20, 40, 100];
 
@@ -28,7 +29,10 @@ export default function RoomPage({
     const { code } = use(params);
     const router = useRouter();
     const [participantId, setParticipantId] = useState<string | null>(null);
-    const { room, isLoading, mutate } = useRealtimeRoom(code, participantId);
+    const { room, isLoading, isKicked, mutate } = useRealtimeRoom(
+        code,
+        participantId
+    );
     const [selectedVote, setSelectedVote] = useState<FibonacciValue>(null);
     const [copiedCode, setCopiedCode] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
@@ -202,6 +206,7 @@ export default function RoomPage({
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 p-4 md:p-6">
             <ConfettiCelebration trigger={showConfetti} />
+            <KickedNotification isKicked={isKicked} roomCode={code} />
 
             <div className="max-w-7xl mx-auto space-y-6">
                 {/* Header */}

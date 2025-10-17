@@ -13,6 +13,7 @@ export function useRealtimeRoom(
     const [room, setRoom] = useState<Room | null | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(true);
     const [isError, setIsError] = useState(false);
+    const [isKicked, setIsKicked] = useState(false);
     const channelRef = useRef<RealtimeChannel | null>(null);
     const mutateRef = useRef<(() => Promise<void>) | null>(null);
     const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -24,6 +25,17 @@ export function useRealtimeRoom(
             const result = await getRoomState(code);
             if (result.success && result.room) {
                 setRoom(result.room);
+                
+                // Check if the current participant still exists in the room
+                if (participantId) {
+                    const participantExists = result.room.participants.some(
+                        (p) => p.id === participantId
+                    );
+                    if (!participantExists) {
+                        console.warn("⚠️ Participant has been kicked from the room");
+                        setIsKicked(true);
+                    }
+                }
             }
         } catch (error) {
             console.error("Failed to fetch room state:", error);
@@ -39,11 +51,22 @@ export function useRealtimeRoom(
 
         const sendHeartbeat = async () => {
             try {
-                await supabase
+                const { data, error } = await supabase
                     .from("participants")
                     .update({ last_seen: new Date().toISOString() })
                     .eq("room_code", code)
-                    .eq("name", participantId);
+                    .eq("name", participantId)
+                    .select();
+
+                // If no rows were updated, the participant was removed
+                if (!error && (!data || data.length === 0)) {
+                    console.warn("⚠️ Participant no longer exists in room");
+                    setIsKicked(true);
+                }
+                
+                if (error) {
+                    console.error("Heartbeat error:", error);
+                }
             } catch (error) {
                 console.error("Heartbeat error:", error);
             }
@@ -183,6 +206,7 @@ export function useRealtimeRoom(
         room,
         isLoading,
         isError,
+        isKicked,
         mutate,
     };
 }
