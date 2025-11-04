@@ -231,6 +231,61 @@ export async function submitVote(
 }
 
 export async function revealVotes(code: string) {
+    // First, get the current story and votes
+    const { data: roomData } = await supabaseServer
+        .from("rooms")
+        .select("current_story_index")
+        .eq("code", code)
+        .single();
+
+    if (!roomData) {
+        return { success: false, error: "Room not found" };
+    }
+
+    // Get the current story
+    const { data: stories } = await supabaseServer
+        .from("stories")
+        .select("id, title")
+        .eq("room_code", code)
+        .order("order_index", { ascending: true });
+
+    const currentStory = stories?.[roomData.current_story_index];
+
+    // Get all current votes
+    const { data: votes } = await supabaseServer
+        .from("votes")
+        .select("participant_name, vote_value, created_at")
+        .eq("room_code", code);
+
+    // Save votes to history if there's a current story and votes exist
+    if (currentStory && votes && votes.length > 0) {
+        const historyRecords = votes.map((vote) => ({
+            room_code: code,
+            story_id: currentStory.id,
+            story_title: currentStory.title,
+            participant_name: vote.participant_name,
+            vote_value: vote.vote_value,
+            voted_at: vote.created_at,
+            revealed_at: new Date().toISOString(),
+        }));
+
+        const { error: historyError } = await supabaseServer
+            .from("vote_history")
+            .insert(historyRecords);
+
+        if (historyError) {
+            console.error("Error saving vote history:", historyError);
+            // Continue anyway - don't fail the reveal if history fails
+        }
+
+        // Update the story with voted_at timestamp
+        await supabaseServer
+            .from("stories")
+            .update({ voted_at: new Date().toISOString() })
+            .eq("id", currentStory.id);
+    }
+
+    // Update room state to revealed
     const { error } = await supabaseServer
         .from("rooms")
         .update({
@@ -566,5 +621,140 @@ export async function deleteStory(
     } catch (error) {
         console.error("Failed to delete story:", error);
         return { success: false, error: "Failed to delete story" };
+    }
+}
+
+export async function setFinalEstimate(
+    code: string,
+    storyId: string,
+    estimate: number
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { error } = await supabaseServer
+            .from("stories")
+            .update({ final_estimate: estimate })
+            .eq("id", parseInt(storyId))
+            .eq("room_code", code);
+
+        if (error) {
+            console.error("Error setting final estimate:", error);
+            return { success: false, error: "Failed to set final estimate" };
+        }
+
+        // Update room activity
+        await supabaseServer
+            .from("rooms")
+            .update({ last_activity: new Date().toISOString() })
+            .eq("code", code);
+
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to set final estimate:", error);
+        return { success: false, error: "Failed to set final estimate" };
+    }
+}
+
+interface VoteHistoryEntry {
+    story_id: number;
+    story_title: string;
+    final_estimate: number | null;
+    voted_at: string | null;
+    votes: Array<{
+        participant_name: string;
+        vote_value: number;
+    }>;
+    statistics: {
+        average: number;
+        median: number;
+        mode: number;
+        min: number;
+        max: number;
+    };
+}
+
+export async function getVoteHistory(
+    code: string
+): Promise<{ success: boolean; history?: VoteHistoryEntry[]; error?: string }> {
+    try {
+        // Get all stories that have been voted on
+        const { data: stories, error: storiesError } = await supabaseServer
+            .from("stories")
+            .select("id, title, final_estimate, voted_at")
+            .eq("room_code", code)
+            .not("voted_at", "is", null)
+            .order("voted_at", { ascending: false });
+
+        if (storiesError) {
+            console.error("Error fetching stories:", storiesError);
+            return { success: false, error: "Failed to fetch vote history" };
+        }
+
+        if (!stories || stories.length === 0) {
+            return { success: true, history: [] };
+        }
+
+        // Get vote history for each story
+        const history: VoteHistoryEntry[] = [];
+
+        for (const story of stories) {
+            const { data: votes, error: votesError } = await supabaseServer
+                .from("vote_history")
+                .select("participant_name, vote_value")
+                .eq("story_id", story.id)
+                .order("participant_name", { ascending: true });
+
+            if (votesError || !votes || votes.length === 0) {
+                continue;
+            }
+
+            // Calculate statistics
+            const voteValues = votes.map((v) => v.vote_value);
+            const sum = voteValues.reduce((a, b) => a + b, 0);
+            const average = sum / voteValues.length;
+
+            const sorted = [...voteValues].sort((a, b) => a - b);
+            const median =
+                sorted.length % 2 === 0
+                    ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+                    : sorted[Math.floor(sorted.length / 2)];
+
+            // Find mode (most common value)
+            const frequency: { [key: number]: number } = {};
+            let maxFreq = 0;
+            let mode = voteValues[0];
+            for (const val of voteValues) {
+                frequency[val] = (frequency[val] || 0) + 1;
+                if (frequency[val] > maxFreq) {
+                    maxFreq = frequency[val];
+                    mode = val;
+                }
+            }
+
+            const min = Math.min(...voteValues);
+            const max = Math.max(...voteValues);
+
+            history.push({
+                story_id: story.id,
+                story_title: story.title,
+                final_estimate: story.final_estimate,
+                voted_at: story.voted_at,
+                votes: votes.map((v) => ({
+                    participant_name: v.participant_name,
+                    vote_value: v.vote_value,
+                })),
+                statistics: {
+                    average,
+                    median,
+                    mode,
+                    min,
+                    max,
+                },
+            });
+        }
+
+        return { success: true, history };
+    } catch (error) {
+        console.error("Failed to get vote history:", error);
+        return { success: false, error: "Failed to get vote history" };
     }
 }
