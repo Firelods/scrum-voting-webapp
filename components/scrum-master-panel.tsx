@@ -20,6 +20,7 @@ import {
     startVoting,
     nextStory,
     addStoryToQueue,
+    setFinalEstimate,
 } from "@/app/actions/room-actions";
 import type { Room } from "@/lib/types";
 import { logger } from "@/lib/logger";
@@ -31,9 +32,12 @@ import {
     RotateCcw,
     Users,
     List,
+    TrendingUp,
+    Save,
 } from "lucide-react";
 import { ParticipantsManager } from "./participants-manager";
 import { StoryQueueManager } from "./story-queue-manager";
+import { VoteSummary } from "./vote-summary";
 
 interface ScrumMasterPanelProps {
     room: Room;
@@ -56,6 +60,10 @@ export function ScrumMasterPanel({
     const [isRevealing, setIsRevealing] = useState(false);
     const [isMovingNext, setIsMovingNext] = useState(false);
     const [isAddingToQueue, setIsAddingToQueue] = useState(false);
+    const [showVoteSummary, setShowVoteSummary] = useState(false);
+    const [showFinalEstimate, setShowFinalEstimate] = useState(false);
+    const [finalEstimateValue, setFinalEstimateValue] = useState<number>(0);
+    const [isSavingEstimate, setIsSavingEstimate] = useState(false);
 
     const handleStartVoting = async () => {
         setIsStartingVote(true);
@@ -117,6 +125,40 @@ export function ScrumMasterPanel({
         } finally {
             setIsAddingToQueue(false);
         }
+    };
+
+    const handleSaveFinalEstimate = async () => {
+        if (!room.currentStory) return;
+
+        setIsSavingEstimate(true);
+        try {
+            await setFinalEstimate(
+                room.code,
+                room.currentStory.id,
+                finalEstimateValue
+            );
+            setShowFinalEstimate(false);
+            await onUpdate();
+        } catch (error) {
+            logger.error("Failed to save final estimate:", error);
+        } finally {
+            setIsSavingEstimate(false);
+        }
+    };
+
+    // Calculate suggested estimate from votes
+    const getSuggestedEstimate = () => {
+        const voters = room.participants.filter((p) => p.vote !== null);
+        if (voters.length === 0) return 0;
+
+        const votes = voters.map((p) => p.vote as number);
+        const sorted = [...votes].sort((a, b) => a - b);
+        const median =
+            sorted.length % 2 === 0
+                ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+                : sorted[Math.floor(sorted.length / 2)];
+
+        return Math.round(median);
     };
 
     // Only count online participants for voting
@@ -313,6 +355,80 @@ export function ScrumMasterPanel({
 
                     {room.votesRevealed && (
                         <>
+                            <Dialog
+                                open={showFinalEstimate}
+                                onOpenChange={setShowFinalEstimate}
+                            >
+                                <DialogTrigger asChild>
+                                    <Button
+                                        variant="default"
+                                        className="w-full bg-green-600 hover:bg-green-700"
+                                        size="lg"
+                                        onClick={() => {
+                                            setFinalEstimateValue(getSuggestedEstimate());
+                                            setShowFinalEstimate(true);
+                                        }}
+                                    >
+                                        <Save className="w-4 h-4 mr-2" />
+                                        Set Final Estimate
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Set Final Estimate</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="space-y-4">
+                                        <p className="text-sm text-muted-foreground">
+                                            After discussion, what is the final estimate for this story?
+                                        </p>
+                                        <div>
+                                            <Label htmlFor="finalEstimate">
+                                                Story Points
+                                            </Label>
+                                            <Input
+                                                id="finalEstimate"
+                                                type="number"
+                                                value={finalEstimateValue}
+                                                onChange={(e) =>
+                                                    setFinalEstimateValue(
+                                                        parseInt(e.target.value) || 0
+                                                    )
+                                                }
+                                                className="mt-1"
+                                                min="0"
+                                            />
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Suggested: {getSuggestedEstimate()} (median of votes)
+                                            </p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                onClick={handleSaveFinalEstimate}
+                                                className="flex-1"
+                                                disabled={isSavingEstimate}
+                                            >
+                                                {isSavingEstimate ? (
+                                                    <>
+                                                        <Loader size="sm" className="mr-2" />
+                                                        Saving...
+                                                    </>
+                                                ) : (
+                                                    "Save Estimate"
+                                                )}
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => setShowFinalEstimate(false)}
+                                                disabled={isSavingEstimate}
+                                            >
+                                                Cancel
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </DialogContent>
+                            </Dialog>
+
                             <Button
                                 onClick={handleNextStory}
                                 className="w-full"
@@ -431,6 +547,28 @@ export function ScrumMasterPanel({
                                 roomCode={room.code}
                                 stories={room.storyQueue}
                             />
+                        </DialogContent>
+                    </Dialog>
+
+                    <Dialog
+                        open={showVoteSummary}
+                        onOpenChange={setShowVoteSummary}
+                    >
+                        <DialogTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full col-span-2"
+                            >
+                                <TrendingUp className="w-4 h-4 mr-2" />
+                                View Vote Summary
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                            <DialogHeader>
+                                <DialogTitle>Vote Summary & History</DialogTitle>
+                            </DialogHeader>
+                            <VoteSummary roomCode={room.code} />
                         </DialogContent>
                     </Dialog>
                 </div>
