@@ -56,7 +56,7 @@ async function buildRoomObject(code: string): Promise<Room | null> {
     // Fetch stories
     const { data: stories, error: storiesError } = await supabaseServer
         .from("stories")
-        .select("id, title, jira_link")
+        .select("id, title, jira_link, final_estimate, voted_at")
         .eq("room_code", code)
         .order("order_index", { ascending: true });
 
@@ -74,12 +74,16 @@ async function buildRoomObject(code: string): Promise<Room | null> {
                   id: currentStory.id.toString(),
                   title: currentStory.title,
                   jiraLink: currentStory.jira_link || undefined,
+                  finalEstimate: currentStory.final_estimate,
+                  votedAt: currentStory.voted_at,
               }
             : null,
         storyQueue: (stories || []).map((s: any) => ({
             id: s.id.toString(),
             title: s.title,
             jiraLink: s.jira_link || undefined,
+            finalEstimate: s.final_estimate,
+            votedAt: s.voted_at,
         })),
         participants: (participants || []).map((p: any) => ({
             id: p.name,

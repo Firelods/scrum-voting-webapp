@@ -11,13 +11,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader, Skeleton } from "@/components/ui/loader";
 import type { FibonacciValue } from "@/lib/types";
-import { Copy, Check, ExternalLink, Settings } from "lucide-react";
+import { Copy, Check, ExternalLink, Settings, TrendingUp } from "lucide-react";
 import { ScrumMasterPanel } from "@/components/scrum-master-panel";
 import { VotingResults } from "@/components/voting-results";
 import { VotingTimer } from "@/components/voting-timer";
 import { ConfettiCelebration } from "@/components/confetti-celebration";
 import { PresenceDebug } from "@/components/presence-debug";
 import { KickedNotification } from "@/components/kicked-notification";
+import { VoteSummary } from "@/components/vote-summary";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
 import { logger } from "@/lib/logger";
 
 const FIBONACCI_VALUES: FibonacciValue[] = [0, 1, 2, 3, 5, 8, 13, 20, 40, 100];
@@ -40,6 +48,7 @@ export default function RoomPage({
     const [showConfetti, setShowConfetti] = useState(false);
     const [confettiEnabled, setConfettiEnabled] = useState(true);
     const [isSubmittingVote, setIsSubmittingVote] = useState(false);
+    const [showVoteSummary, setShowVoteSummary] = useState(false);
 
     // Load confetti preference from localStorage
     useEffect(() => {
@@ -441,6 +450,29 @@ export default function RoomPage({
                             votesRevealed={room.votesRevealed}
                         />
 
+                        {/* Vote Summary Button */}
+                        <Dialog
+                            open={showVoteSummary}
+                            onOpenChange={setShowVoteSummary}
+                        >
+                            <DialogTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    className="w-full"
+                                    size="lg"
+                                >
+                                    <TrendingUp className="w-4 h-4 mr-2" />
+                                    View Vote Summary
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>Vote Summary & History</DialogTitle>
+                                </DialogHeader>
+                                <VoteSummary roomCode={code} />
+                            </DialogContent>
+                        </Dialog>
+
                         {/* Story Queue */}
                         {room.storyQueue.length > 0 && (
                             <Card>
@@ -454,39 +486,59 @@ export default function RoomPage({
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-2">
-                                        {room.storyQueue.map((story, index) => (
-                                            <div
-                                                key={story.id}
-                                                className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800"
-                                            >
-                                                <div className="flex items-start gap-2">
-                                                    <Badge
-                                                        variant="outline"
-                                                        className="mt-0.5"
-                                                    >
-                                                        {index + 1}
-                                                    </Badge>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="font-medium text-sm text-gray-900 dark:text-white truncate">
-                                                            {story.title}
-                                                        </p>
-                                                        {story.jiraLink && (
-                                                            <a
-                                                                href={
-                                                                    story.jiraLink
-                                                                }
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 mt-1"
-                                                            >
-                                                                Jira{" "}
-                                                                <ExternalLink className="w-3 h-3" />
-                                                            </a>
-                                                        )}
+                                        {room.storyQueue.map((story, index) => {
+                                            const isCurrent = story.id === room.currentStory?.id;
+                                            return (
+                                                <div
+                                                    key={story.id}
+                                                    className={`p-3 rounded-lg border ${
+                                                        isCurrent
+                                                            ? "bg-blue-50 dark:bg-blue-950 border-blue-500 dark:border-blue-500"
+                                                            : "bg-gray-50 dark:bg-gray-800 border-transparent"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start gap-2">
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="mt-0.5"
+                                                        >
+                                                            {index + 1}
+                                                        </Badge>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                                {isCurrent && (
+                                                                    <Badge className="bg-blue-600 dark:bg-blue-600 text-xs">
+                                                                        Current
+                                                                    </Badge>
+                                                                )}
+                                                                {story.finalEstimate !== null &&
+                                                                 story.finalEstimate !== undefined && (
+                                                                    <Badge variant="secondary" className="font-bold text-xs">
+                                                                        {story.finalEstimate} pts
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                            <p className="font-medium text-sm text-gray-900 dark:text-white truncate">
+                                                                {story.title}
+                                                            </p>
+                                                            {story.jiraLink && (
+                                                                <a
+                                                                    href={
+                                                                        story.jiraLink
+                                                                    }
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 mt-1"
+                                                                >
+                                                                    Jira{" "}
+                                                                    <ExternalLink className="w-3 h-3" />
+                                                                </a>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </CardContent>
                             </Card>
