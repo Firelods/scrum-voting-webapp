@@ -546,6 +546,7 @@ export function ScrumMasterPanel({
                             <StoryQueueManager
                                 roomCode={room.code}
                                 stories={room.storyQueue}
+                                currentStoryId={room.currentStory?.id}
                             />
                         </DialogContent>
                     </Dialog>

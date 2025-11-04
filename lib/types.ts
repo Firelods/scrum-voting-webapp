@@ -12,6 +12,8 @@ export interface Story {
     id: string;
     title: string;
     jiraLink?: string;
+    finalEstimate?: number | null;
+    votedAt?: string | null;
 }
 
 export interface Room {

@@ -20,6 +20,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { GripVertical, Trash2, ExternalLink } from "lucide-react";
 import { reorderStories, deleteStory } from "@/app/actions/room-actions";
 
@@ -27,19 +28,24 @@ interface Story {
     id: string;
     title: string;
     jiraLink?: string;
+    finalEstimate?: number | null;
+    votedAt?: string | null;
 }
 
 interface StoryQueueManagerProps {
     roomCode: string;
     stories: Story[];
+    currentStoryId?: string | null;
 }
 
 function SortableStoryItem({
     story,
     onDelete,
+    isCurrent,
 }: {
     story: Story;
     onDelete?: (id: string) => void;
+    isCurrent?: boolean;
 }) {
     const {
         attributes,
@@ -60,7 +66,11 @@ function SortableStoryItem({
         <div
             ref={setNodeRef}
             style={style}
-            className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm"
+            className={`flex items-center gap-3 p-3 rounded-lg border shadow-sm ${
+                isCurrent
+                    ? "bg-blue-50 dark:bg-blue-950 border-blue-500 dark:border-blue-500"
+                    : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+            }`}
         >
             <div
                 {...attributes}
@@ -70,7 +80,12 @@ function SortableStoryItem({
                 <GripVertical className="w-5 h-5 text-gray-400" />
             </div>
             <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                    {isCurrent && (
+                        <Badge className="bg-blue-600 dark:bg-blue-600">
+                            Current
+                        </Badge>
+                    )}
                     <h3 className="font-medium text-gray-900 dark:text-white truncate">
                         {story.title}
                     </h3>
@@ -84,6 +99,11 @@ function SortableStoryItem({
                         >
                             <ExternalLink className="w-4 h-4" />
                         </a>
+                    )}
+                    {story.finalEstimate !== null && story.finalEstimate !== undefined && (
+                        <Badge variant="secondary" className="font-bold">
+                            {story.finalEstimate} pts
+                        </Badge>
                     )}
                 </div>
             </div>
@@ -104,6 +124,7 @@ function SortableStoryItem({
 export function StoryQueueManager({
     roomCode,
     stories: initialStories,
+    currentStoryId,
 }: StoryQueueManagerProps) {
     const [stories, setStories] = useState(initialStories);
 
@@ -177,6 +198,7 @@ export function StoryQueueManager({
                                         key={story.id}
                                         story={story}
                                         onDelete={handleDelete}
+                                        isCurrent={story.id === currentStoryId}
                                     />
                                 ))}
                             </div>
