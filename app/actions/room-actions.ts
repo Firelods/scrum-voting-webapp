@@ -28,7 +28,7 @@ async function buildRoomObject(code: string): Promise<Room | null> {
     const { data: participants, error: participantsError } =
         await supabaseServer
             .from("participants")
-            .select("name, is_scrum_master")
+            .select("name, is_scrum_master, is_voter")
             .eq("room_code", code)
             .order("joined_at", { ascending: true });
 
@@ -91,6 +91,7 @@ async function buildRoomObject(code: string): Promise<Room | null> {
             vote: voteMap.get(p.name) || null,
             isScumMaster: p.is_scrum_master,
             isOnline: true, // Always true since we removed heartbeat tracking
+            isVoter: p.is_voter !== undefined ? p.is_voter : true,
         })),
         votingActive: roomData.voting_state === "voting",
         votesRevealed: roomData.votes_revealed,
@@ -99,6 +100,7 @@ async function buildRoomObject(code: string): Promise<Room | null> {
             ? roomData.timer_end_time - roomData.timer_duration * 1000
             : null,
         createdAt: new Date(roomData.created_at).getTime(),
+        jiraBaseUrl: roomData.jira_base_url || null,
     };
 }
 
@@ -674,6 +676,164 @@ interface VoteHistoryEntry {
         min: number;
         max: number;
     };
+}
+
+export async function updateStory(
+    code: string,
+    storyId: string,
+    title: string,
+    jiraLink?: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { error } = await supabaseServer
+            .from("stories")
+            .update({
+                title,
+                jira_link: jiraLink || null
+            })
+            .eq("id", parseInt(storyId))
+            .eq("room_code", code);
+
+        if (error) {
+            console.error("Error updating story:", error);
+            return { success: false, error: "Failed to update story" };
+        }
+
+        await supabaseServer
+            .from("rooms")
+            .update({ last_activity: new Date().toISOString() })
+            .eq("code", code);
+
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to update story:", error);
+        return { success: false, error: "Failed to update story" };
+    }
+}
+
+export async function addMultipleStoriesToQueue(
+    code: string,
+    stories: { title: string; jiraLink?: string }[]
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { data: maxOrderData } = await supabaseServer
+            .from("stories")
+            .select("order_index")
+            .eq("room_code", code)
+            .order("order_index", { ascending: false })
+            .limit(1)
+            .single();
+
+        const maxOrder = maxOrderData?.order_index ?? -1;
+
+        const storiesToInsert = stories.map((story, index) => ({
+            room_code: code,
+            title: story.title,
+            jira_link: story.jiraLink || null,
+            order_index: maxOrder + 1 + index,
+        }));
+
+        const { error: insertError } = await supabaseServer
+            .from("stories")
+            .insert(storiesToInsert);
+
+        if (insertError) {
+            console.error("Error inserting stories:", insertError);
+            return { success: false, error: "Failed to add stories" };
+        }
+
+        await supabaseServer
+            .from("rooms")
+            .update({ last_activity: new Date().toISOString() })
+            .eq("code", code);
+
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to add multiple stories:", error);
+        return { success: false, error: "Failed to add stories" };
+    }
+}
+
+export async function updateJiraBaseUrl(
+    code: string,
+    jiraBaseUrl: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { error } = await supabaseServer
+            .from("rooms")
+            .update({
+                jira_base_url: jiraBaseUrl || null,
+                last_activity: new Date().toISOString()
+            })
+            .eq("code", code);
+
+        if (error) {
+            console.error("Error updating Jira base URL:", error);
+            return { success: false, error: "Failed to update Jira base URL" };
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to update Jira base URL:", error);
+        return { success: false, error: "Failed to update Jira base URL" };
+    }
+}
+
+export async function updateParticipantVoterStatus(
+    code: string,
+    participantName: string,
+    isVoter: boolean
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { error } = await supabaseServer
+            .from("participants")
+            .update({ is_voter: isVoter })
+            .eq("room_code", code)
+            .eq("name", participantName);
+
+        if (error) {
+            console.error("Error updating voter status:", error);
+            return { success: false, error: "Failed to update voter status" };
+        }
+
+        await supabaseServer
+            .from("rooms")
+            .update({ last_activity: new Date().toISOString() })
+            .eq("code", code);
+
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to update voter status:", error);
+        return { success: false, error: "Failed to update voter status" };
+    }
+}
+
+export async function promoteToScrumMaster(
+    code: string,
+    participantName: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { error } = await supabaseServer
+            .from("participants")
+            .update({ is_scrum_master: true })
+            .eq("room_code", code)
+            .eq("name", participantName);
+
+        if (error) {
+            console.error("Error promoting to scrum master:", error);
+            return { success: false, error: "Failed to promote participant" };
+        }
+
+        await supabaseServer
+            .from("rooms")
+            .update({ last_activity: new Date().toISOString() })
+            .eq("code", code);
+
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to promote to scrum master:", error);
+        return { success: false, error: "Failed to promote participant" };
+    }
 }
 
 export async function getVoteHistory(
