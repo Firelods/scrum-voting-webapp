@@ -1,10 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getVoteHistory } from "@/app/actions/room-actions";
+import { getVoteHistory, setFinalEstimate } from "@/app/actions/room-actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink, TrendingUp, Users } from "lucide-react";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { ExternalLink, TrendingUp, Users, Edit } from "lucide-react";
 import { Loader } from "@/components/ui/loader";
 
 interface VoteHistoryEntry {
@@ -33,6 +43,9 @@ export function VoteSummary({ roomCode }: VoteSummaryProps) {
     const [history, setHistory] = useState<VoteHistoryEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [editingStoryId, setEditingStoryId] = useState<number | null>(null);
+    const [editEstimate, setEditEstimate] = useState<number>(0);
+    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
         loadHistory();
@@ -48,6 +61,30 @@ export function VoteSummary({ roomCode }: VoteSummaryProps) {
             setError(result.error || "Failed to load vote history");
         }
         setLoading(false);
+    };
+
+    const handleEditEstimate = async () => {
+        if (editingStoryId === null) return;
+
+        setIsSaving(true);
+        try {
+            const result = await setFinalEstimate(roomCode, editingStoryId.toString(), editEstimate);
+            if (result.success) {
+                // Update local state
+                setHistory(history.map(entry =>
+                    entry.story_id === editingStoryId
+                        ? { ...entry, final_estimate: editEstimate }
+                        : entry
+                ));
+                setEditingStoryId(null);
+            } else {
+                alert(result.error || "Failed to update estimate");
+            }
+        } catch (err) {
+            alert("Failed to update estimate");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     if (loading) {
@@ -120,16 +157,89 @@ export function VoteSummary({ roomCode }: VoteSummaryProps) {
                                         Voted on {formatDate(entry.voted_at)}
                                     </p>
                                 </div>
-                                {entry.final_estimate !== null ? (
-                                    <Badge
-                                        variant="default"
-                                        className="text-lg px-3 py-1 font-bold"
+                                <div className="flex items-center gap-2">
+                                    {entry.final_estimate !== null ? (
+                                        <Badge
+                                            variant="default"
+                                            className="text-lg px-3 py-1 font-bold"
+                                        >
+                                            {entry.final_estimate} pts
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="outline">No final estimate</Badge>
+                                    )}
+                                    <Dialog
+                                        open={editingStoryId === entry.story_id}
+                                        onOpenChange={(open) => {
+                                            if (open) {
+                                                setEditingStoryId(entry.story_id);
+                                                setEditEstimate(entry.final_estimate || 0);
+                                            } else {
+                                                setEditingStoryId(null);
+                                            }
+                                        }}
                                     >
-                                        {entry.final_estimate} pts
-                                    </Badge>
-                                ) : (
-                                    <Badge variant="outline">No final estimate</Badge>
-                                )}
+                                        <DialogTrigger asChild>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 w-8 p-0"
+                                                title="Edit estimate"
+                                            >
+                                                <Edit className="w-4 h-4" />
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>Edit Final Estimate</DialogTitle>
+                                            </DialogHeader>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <Label htmlFor="editEstimate">
+                                                        Story Points
+                                                    </Label>
+                                                    <Input
+                                                        id="editEstimate"
+                                                        type="number"
+                                                        value={editEstimate}
+                                                        onChange={(e) =>
+                                                            setEditEstimate(parseInt(e.target.value) || 0)
+                                                        }
+                                                        className="mt-1"
+                                                        min="0"
+                                                    />
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        Current consensus: {entry.statistics.median} (median)
+                                                    </p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        onClick={handleEditEstimate}
+                                                        className="flex-1"
+                                                        disabled={isSaving}
+                                                    >
+                                                        {isSaving ? (
+                                                            <>
+                                                                <Loader size="sm" className="mr-2" />
+                                                                Saving...
+                                                            </>
+                                                        ) : (
+                                                            "Save Estimate"
+                                                        )}
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        onClick={() => setEditingStoryId(null)}
+                                                        disabled={isSaving}
+                                                    >
+                                                        Cancel
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </DialogContent>
+                                    </Dialog>
+                                </div>
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
