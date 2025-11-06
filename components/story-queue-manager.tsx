@@ -101,15 +101,17 @@ function SortableStoryItem({
                 <GripVertical className="w-5 h-5 text-gray-400" />
             </div>
             <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
                     {isCurrent && (
-                        <Badge className="bg-blue-600 dark:bg-blue-600">
+                        <Badge className="bg-blue-600 dark:bg-blue-600 flex-shrink-0">
                             Current
                         </Badge>
                     )}
-                    <h3 className="font-medium text-gray-900 dark:text-white break-words">
-                        {story.title}
-                    </h3>
+                    {story.finalEstimate !== null && story.finalEstimate !== undefined && (
+                        <Badge variant="secondary" className="font-bold flex-shrink-0">
+                            {story.finalEstimate} pts
+                        </Badge>
+                    )}
                     {story.jiraLink && (
                         <a
                             href={story.jiraLink}
@@ -121,12 +123,10 @@ function SortableStoryItem({
                             <ExternalLink className="w-4 h-4" />
                         </a>
                     )}
-                    {story.finalEstimate !== null && story.finalEstimate !== undefined && (
-                        <Badge variant="secondary" className="font-bold">
-                            {story.finalEstimate} pts
-                        </Badge>
-                    )}
                 </div>
+                <h3 className="font-medium text-gray-900 dark:text-white break-words" title={story.title}>
+                    {story.title}
+                </h3>
             </div>
             <div className="flex items-center gap-1">
                 {onEdit && (

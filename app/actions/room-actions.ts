@@ -385,7 +385,7 @@ export async function startVoting(
 }
 
 export async function nextStory(code: string) {
-    // Get current story index
+    // Get current story index and stories
     const { data: roomData, error: roomError } = await supabaseServer
         .from("rooms")
         .select("current_story_index")
@@ -394,6 +394,55 @@ export async function nextStory(code: string) {
 
     if (roomError || !roomData) {
         return { success: false, error: "Room not found" };
+    }
+
+    // Get the current story
+    const { data: stories } = await supabaseServer
+        .from("stories")
+        .select("id, title, final_estimate")
+        .eq("room_code", code)
+        .order("order_index", { ascending: true });
+
+    const currentStory = stories?.[roomData.current_story_index];
+
+    // If there's a current story without a final estimate, calculate consensus from votes
+    if (currentStory && (currentStory.final_estimate === null || currentStory.final_estimate === undefined)) {
+        const { data: votes } = await supabaseServer
+            .from("votes")
+            .select("vote_value")
+            .eq("room_code", code);
+
+        // If there are votes, calculate the consensus (median rounded to nearest Fibonacci value)
+        if (votes && votes.length > 0) {
+            const FIBONACCI_VALUES = [0, 1, 2, 3, 5, 8, 13, 20, 40, 100];
+            const voteValues = votes.map(v => v.vote_value).filter(v => v !== null) as number[];
+
+            if (voteValues.length > 0) {
+                // Calculate median
+                const sorted = [...voteValues].sort((a, b) => a - b);
+                const median = sorted.length % 2 === 0
+                    ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+                    : sorted[Math.floor(sorted.length / 2)];
+
+                // Find closest Fibonacci value to the median
+                let consensus = FIBONACCI_VALUES[0];
+                let minDiff = Math.abs(median - consensus);
+
+                for (const fibValue of FIBONACCI_VALUES) {
+                    const diff = Math.abs(median - fibValue);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        consensus = fibValue;
+                    }
+                }
+
+                // Update story with consensus as final estimate
+                await supabaseServer
+                    .from("stories")
+                    .update({ final_estimate: consensus })
+                    .eq("id", currentStory.id);
+            }
+        }
     }
 
     // Clear votes and move to next story
