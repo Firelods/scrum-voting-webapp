@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { getRoomState } from "@/app/actions/room-actions";
 import type { Room } from "@/lib/types";
@@ -17,6 +17,7 @@ export function useRealtimeRoom(
     const [isKicked, setIsKicked] = useState(false);
     const channelRef = useRef<RealtimeChannel | null>(null);
     const mutateRef = useRef<(() => Promise<void>) | null>(null);
+    const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     // Function to manually fetch room state
     const mutate = async () => {
@@ -25,7 +26,7 @@ export function useRealtimeRoom(
             const result = await getRoomState(code);
             if (result.success && result.room) {
                 setRoom(result.room);
-                
+
                 // Check if the current participant still exists in the room
                 if (participantId) {
                     const participantExists = result.room.participants.some(
@@ -41,6 +42,19 @@ export function useRealtimeRoom(
             logger.error("Failed to fetch room state:", error);
         }
     };
+
+    // Debounced mutate to prevent cascade of calls
+    const debouncedMutate = useCallback(() => {
+        // Clear existing timer
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+        }
+
+        // Set new timer
+        debounceTimerRef.current = setTimeout(() => {
+            mutateRef.current?.();
+        }, 150); // 150ms debounce
+    }, []);
 
     // Keep mutate ref updated
     mutateRef.current = mutate;
@@ -88,8 +102,8 @@ export function useRealtimeRoom(
                 },
                 async (payload) => {
                     logger.log("🏠 Room change detected:", payload);
-                    // Refetch room state when any change is detected
-                    await mutateRef.current?.();
+                    // Use debounced mutate to prevent cascade of calls
+                    debouncedMutate();
                 }
             )
             .on(
@@ -102,7 +116,7 @@ export function useRealtimeRoom(
                 },
                 async (payload: any) => {
                     logger.log("🗳️ Vote change detected:", payload);
-                    await mutateRef.current?.();
+                    debouncedMutate();
                 }
             )
             .on(
@@ -115,7 +129,7 @@ export function useRealtimeRoom(
                 },
                 async (payload: any) => {
                     logger.log("👥 Participant change detected:", payload);
-                    await mutateRef.current?.();
+                    debouncedMutate();
                 }
             )
             .on(
@@ -128,7 +142,7 @@ export function useRealtimeRoom(
                 },
                 async (payload: any) => {
                     logger.log("📖 Story change detected:", payload);
-                    await mutateRef.current?.();
+                    debouncedMutate();
                 }
             )
             .subscribe((status) => {
@@ -154,12 +168,18 @@ export function useRealtimeRoom(
         // Cleanup on unmount
         return () => {
             logger.log(`Unsubscribing from room ${code}`);
+
+            // Clear debounce timer
+            if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current);
+            }
+
             if (channelRef.current) {
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
             }
         };
-    }, [code, participantId]);
+    }, [code, participantId, debouncedMutate]);
 
     return {
         room,

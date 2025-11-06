@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader, Skeleton } from "@/components/ui/loader";
 import type { FibonacciValue } from "@/lib/types";
-import { Copy, Check, ExternalLink, Settings, TrendingUp } from "lucide-react";
+import { Copy, Check, ExternalLink, Settings, TrendingUp, Filter } from "lucide-react";
 import { ScrumMasterPanel } from "@/components/scrum-master-panel";
 import { VotingResults } from "@/components/voting-results";
 import { VotingTimer } from "@/components/voting-timer";
@@ -27,8 +27,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { logger } from "@/lib/logger";
-
-const FIBONACCI_VALUES: FibonacciValue[] = [0, 1, 2, 3, 5, 8, 13, 20, 40, 100];
+import { FIBONACCI_VALUES } from "@/lib/constants";
 
 export default function RoomPage({
     params,
@@ -49,6 +48,7 @@ export default function RoomPage({
     const [confettiEnabled, setConfettiEnabled] = useState(true);
     const [isSubmittingVote, setIsSubmittingVote] = useState(false);
     const [showVoteSummary, setShowVoteSummary] = useState(false);
+    const [showOnlyUnestimated, setShowOnlyUnestimated] = useState(false);
 
     // Load confetti preference from localStorage
     useEffect(() => {
@@ -216,6 +216,7 @@ export default function RoomPage({
         (p) => p.id === participantId
     );
     const isScumMaster = currentParticipant?.isScumMaster || false;
+    const isVoter = currentParticipant?.isVoter ?? true; // Default to true for backward compatibility
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 p-4 md:p-6">
@@ -385,59 +386,75 @@ export default function RoomPage({
                                 <CardTitle>Select Your Estimate</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                {!room.votingActive && !room.votesRevealed && (
+                                {!isVoter ? (
                                     <div className="text-center py-12">
+                                        <Badge variant="secondary" className="mb-4 text-base px-4 py-2">
+                                            Observer Mode
+                                        </Badge>
                                         <p className="text-gray-600 dark:text-gray-400 text-lg">
-                                            Waiting for Scrum Master to start
-                                            voting...
+                                            You are participating as an observer.
+                                        </p>
+                                        <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">
+                                            You can follow the voting but cannot submit your own vote.
                                         </p>
                                     </div>
-                                )}
-
-                                {room.votingActive && (
-                                    <div className="relative flex flex-wrap justify-center gap-3 md:gap-4">
-                                        {isSubmittingVote && (
-                                            <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-800/50 rounded-lg z-10">
-                                                <Loader size="md" className="text-blue-600 dark:text-blue-400" />
+                                ) : (
+                                    <>
+                                        {!room.votingActive && !room.votesRevealed && (
+                                            <div className="text-center py-12">
+                                                <p className="text-gray-600 dark:text-gray-400 text-lg">
+                                                    Waiting for Scrum Master to start
+                                                    voting...
+                                                </p>
                                             </div>
                                         )}
-                                        {FIBONACCI_VALUES.map((value) => (
-                                            <FibonacciCard
-                                                key={value}
-                                                value={value}
-                                                selected={
-                                                    selectedVote === value
-                                                }
-                                                onClick={() =>
-                                                    handleVote(value)
-                                                }
-                                                disabled={!room.votingActive || isSubmittingVote}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
 
-                                {room.votesRevealed && (
-                                    <div className="flex flex-wrap justify-center gap-3 md:gap-4">
-                                        {FIBONACCI_VALUES.map((value) => {
-                                            const count =
-                                                room.participants.filter(
-                                                    (p) => p.vote === value
-                                                ).length;
-                                            return (
-                                                <FibonacciCard
-                                                    key={value}
-                                                    value={value}
-                                                    selected={
-                                                        selectedVote === value
-                                                    }
-                                                    disabled
-                                                    revealed
-                                                    count={count}
-                                                />
-                                            );
-                                        })}
-                                    </div>
+                                        {room.votingActive && (
+                                            <div className="relative flex flex-wrap justify-center gap-3 md:gap-4">
+                                                {isSubmittingVote && (
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-800/50 rounded-lg z-10">
+                                                        <Loader size="md" className="text-blue-600 dark:text-blue-400" />
+                                                    </div>
+                                                )}
+                                                {FIBONACCI_VALUES.map((value) => (
+                                                    <FibonacciCard
+                                                        key={value}
+                                                        value={value}
+                                                        selected={
+                                                            selectedVote === value
+                                                        }
+                                                        onClick={() =>
+                                                            handleVote(value)
+                                                        }
+                                                        disabled={!room.votingActive || isSubmittingVote}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {room.votesRevealed && (
+                                            <div className="flex flex-wrap justify-center gap-3 md:gap-4">
+                                                {FIBONACCI_VALUES.map((value) => {
+                                                    const count =
+                                                        room.participants.filter(
+                                                            (p) => p.vote === value
+                                                        ).length;
+                                                    return (
+                                                        <FibonacciCard
+                                                            key={value}
+                                                            value={value}
+                                                            selected={
+                                                                selectedVote === value
+                                                            }
+                                                            disabled
+                                                            revealed
+                                                            count={count}
+                                                        />
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </CardContent>
                         </Card>
@@ -477,17 +494,32 @@ export default function RoomPage({
                         {room.storyQueue.length > 0 && (
                             <Card>
                                 <CardHeader>
-                                    <CardTitle className="flex items-center gap-2">
-                                        <span>Story Queue</span>
-                                        <Badge variant="secondary">
-                                            {room.storyQueue.length}
-                                        </Badge>
-                                    </CardTitle>
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className="flex items-center gap-2">
+                                            <span>Story Queue</span>
+                                            <Badge variant="secondary">
+                                                {showOnlyUnestimated
+                                                    ? room.storyQueue.filter(s => s.finalEstimate === null || s.finalEstimate === undefined).length
+                                                    : room.storyQueue.length}
+                                            </Badge>
+                                        </CardTitle>
+                                        <Button
+                                            variant={showOnlyUnestimated ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => setShowOnlyUnestimated(!showOnlyUnestimated)}
+                                        >
+                                            <Filter className="w-3 h-3 mr-1" />
+                                            {showOnlyUnestimated ? "All" : "Unest."}
+                                        </Button>
+                                    </div>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-2">
-                                        {room.storyQueue.map((story, index) => {
+                                        {room.storyQueue
+                                            .filter(story => !showOnlyUnestimated || story.finalEstimate === null || story.finalEstimate === undefined)
+                                            .map((story) => {
                                             const isCurrent = story.id === room.currentStory?.id;
+                                            const actualIndex = room.storyQueue.findIndex(s => s.id === story.id);
                                             return (
                                                 <div
                                                     key={story.id}
@@ -500,25 +532,25 @@ export default function RoomPage({
                                                     <div className="flex items-start gap-2">
                                                         <Badge
                                                             variant="outline"
-                                                            className="mt-0.5"
+                                                            className="mt-0.5 flex-shrink-0"
                                                         >
-                                                            {index + 1}
+                                                            {actualIndex + 1}
                                                         </Badge>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center gap-2 flex-wrap mb-1">
                                                                 {isCurrent && (
-                                                                    <Badge className="bg-blue-600 dark:bg-blue-600 text-xs">
+                                                                    <Badge className="bg-blue-600 dark:bg-blue-600 text-xs flex-shrink-0">
                                                                         Current
                                                                     </Badge>
                                                                 )}
                                                                 {story.finalEstimate !== null &&
                                                                  story.finalEstimate !== undefined && (
-                                                                    <Badge variant="secondary" className="font-bold text-xs">
+                                                                    <Badge variant="secondary" className="font-bold text-xs flex-shrink-0">
                                                                         {story.finalEstimate} pts
                                                                     </Badge>
                                                                 )}
                                                             </div>
-                                                            <p className="font-medium text-sm text-gray-900 dark:text-white truncate">
+                                                            <p className="font-medium text-sm text-gray-900 dark:text-white break-words line-clamp-2" title={story.title}>
                                                                 {story.title}
                                                             </p>
                                                             {story.jiraLink && (
