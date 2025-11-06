@@ -6,6 +6,7 @@ export interface Participant {
     vote: FibonacciValue;
     isScumMaster: boolean;
     isOnline: boolean;
+    isVoter: boolean;
 }
 
 export interface Story {
@@ -26,6 +27,7 @@ export interface Room {
     timerSeconds: number | null;
     timerStartedAt: number | null;
     createdAt: number;
+    jiraBaseUrl?: string | null;
 }
 
 export interface RoomState {
