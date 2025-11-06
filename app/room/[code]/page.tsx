@@ -49,6 +49,7 @@ export default function RoomPage({
     const [confettiEnabled, setConfettiEnabled] = useState(true);
     const [isSubmittingVote, setIsSubmittingVote] = useState(false);
     const [showVoteSummary, setShowVoteSummary] = useState(false);
+    const [showOnlyUnestimated, setShowOnlyUnestimated] = useState(false);
 
     // Load confetti preference from localStorage
     useEffect(() => {
@@ -477,16 +478,30 @@ export default function RoomPage({
                         {room.storyQueue.length > 0 && (
                             <Card>
                                 <CardHeader>
-                                    <CardTitle className="flex items-center gap-2">
-                                        <span>Story Queue</span>
-                                        <Badge variant="secondary">
-                                            {room.storyQueue.length}
-                                        </Badge>
-                                    </CardTitle>
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className="flex items-center gap-2">
+                                            <span>Story Queue</span>
+                                            <Badge variant="secondary">
+                                                {showOnlyUnestimated
+                                                    ? room.storyQueue.filter(s => s.finalEstimate === null || s.finalEstimate === undefined).length
+                                                    : room.storyQueue.length}
+                                            </Badge>
+                                        </CardTitle>
+                                        <Button
+                                            variant={showOnlyUnestimated ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => setShowOnlyUnestimated(!showOnlyUnestimated)}
+                                        >
+                                            <Filter className="w-3 h-3 mr-1" />
+                                            {showOnlyUnestimated ? "All" : "Unest."}
+                                        </Button>
+                                    </div>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-2">
-                                        {room.storyQueue.map((story, index) => {
+                                        {room.storyQueue
+                                            .filter(story => !showOnlyUnestimated || story.finalEstimate === null || story.finalEstimate === undefined)
+                                            .map((story, index) => {
                                             const isCurrent = story.id === room.currentStory?.id;
                                             return (
                                                 <div
@@ -500,25 +515,25 @@ export default function RoomPage({
                                                     <div className="flex items-start gap-2">
                                                         <Badge
                                                             variant="outline"
-                                                            className="mt-0.5"
+                                                            className="mt-0.5 flex-shrink-0"
                                                         >
                                                             {index + 1}
                                                         </Badge>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center gap-2 flex-wrap mb-1">
                                                                 {isCurrent && (
-                                                                    <Badge className="bg-blue-600 dark:bg-blue-600 text-xs">
+                                                                    <Badge className="bg-blue-600 dark:bg-blue-600 text-xs flex-shrink-0">
                                                                         Current
                                                                     </Badge>
                                                                 )}
                                                                 {story.finalEstimate !== null &&
                                                                  story.finalEstimate !== undefined && (
-                                                                    <Badge variant="secondary" className="font-bold text-xs">
+                                                                    <Badge variant="secondary" className="font-bold text-xs flex-shrink-0">
                                                                         {story.finalEstimate} pts
                                                                     </Badge>
                                                                 )}
                                                             </div>
-                                                            <p className="font-medium text-sm text-gray-900 dark:text-white truncate">
+                                                            <p className="font-medium text-sm text-gray-900 dark:text-white break-words line-clamp-2" title={story.title}>
                                                                 {story.title}
                                                             </p>
                                                             {story.jiraLink && (
