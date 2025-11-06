@@ -149,15 +149,15 @@ export function VoteSummary({ roomCode }: VoteSummaryProps) {
                     <Card key={entry.story_id}>
                         <CardHeader className="pb-3">
                             <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1">
-                                    <CardTitle className="text-base font-semibold">
+                                <div className="flex-1 min-w-0">
+                                    <CardTitle className="text-base font-semibold break-words" title={entry.story_title}>
                                         {entry.story_title}
                                     </CardTitle>
                                     <p className="text-xs text-muted-foreground mt-1">
                                         Voted on {formatDate(entry.voted_at)}
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-shrink-0">
                                     {entry.final_estimate !== null ? (
                                         <Badge
                                             variant="default"

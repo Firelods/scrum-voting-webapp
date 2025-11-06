@@ -129,8 +129,8 @@ export function ScrumMasterPanel({
 
                 const stories = lines.map(line => {
                     const title = line.trim();
-                    // Check if the line contains a Jira ID (4 digits)
-                    const jiraMatch = title.match(/(\d{4})/);
+                    // Check if the line contains a Jira ID (2-5 digits)
+                    const jiraMatch = title.match(/(\d{2,5})/);
                     let jiraLink: string | undefined = undefined;
 
                     if (jiraMatch && room.jiraBaseUrl) {
@@ -398,7 +398,7 @@ export function ScrumMasterPanel({
                                                 />
                                                 <p className="text-xs text-muted-foreground mt-1">
                                                     {room.jiraBaseUrl
-                                                        ? "If a line contains a 4-digit number, it will be used as Jira ID"
+                                                        ? "If a line contains a 2-5 digit number, it will be used as Jira ID"
                                                         : "Set Jira base URL in settings to auto-link tickets"}
                                                 </p>
                                             </div>
@@ -712,7 +712,7 @@ export function ScrumMasterPanel({
                                         className="mt-1"
                                     />
                                     <p className="text-xs text-muted-foreground mt-1">
-                                        When importing multiple stories, 4-digit numbers will be automatically linked using this base URL
+                                        When importing multiple stories, 2-5 digit numbers will be automatically linked using this base URL
                                     </p>
                                 </div>
                                 <div className="flex gap-2">
