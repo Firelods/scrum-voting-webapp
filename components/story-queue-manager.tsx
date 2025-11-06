@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     DndContext,
     closestCenter,
@@ -20,27 +20,54 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { GripVertical, Trash2, ExternalLink } from "lucide-react";
-import { reorderStories, deleteStory } from "@/app/actions/room-actions";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { GripVertical, Trash2, ExternalLink, Edit, Filter } from "lucide-react";
+import { reorderStories, deleteStory, updateStory } from "@/app/actions/room-actions";
 
 interface Story {
     id: string;
     title: string;
     jiraLink?: string;
+    finalEstimate?: number | null;
+    votedAt?: string | null;
 }
 
 interface StoryQueueManagerProps {
     roomCode: string;
     stories: Story[];
+    currentStoryId?: string | null;
 }
 
 function SortableStoryItem({
     story,
     onDelete,
+    onEdit,
+    isCurrent,
 }: {
     story: Story;
     onDelete?: (id: string) => void;
+    onEdit?: (id: string, title: string, jiraLink?: string) => void;
+    isCurrent?: boolean;
 }) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editTitle, setEditTitle] = useState(story.title);
+    const [editJiraLink, setEditJiraLink] = useState(story.jiraLink || "");
+
+    const handleEdit = () => {
+        if (onEdit) {
+            onEdit(story.id, editTitle, editJiraLink || undefined);
+            setIsEditing(false);
+        }
+    };
     const {
         attributes,
         listeners,
@@ -60,7 +87,11 @@ function SortableStoryItem({
         <div
             ref={setNodeRef}
             style={style}
-            className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm"
+            className={`flex items-center gap-3 p-3 rounded-lg border shadow-sm ${
+                isCurrent
+                    ? "bg-blue-50 dark:bg-blue-950 border-blue-500 dark:border-blue-500"
+                    : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+            }`}
         >
             <div
                 {...attributes}
@@ -70,8 +101,13 @@ function SortableStoryItem({
                 <GripVertical className="w-5 h-5 text-gray-400" />
             </div>
             <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                    <h3 className="font-medium text-gray-900 dark:text-white truncate">
+                <div className="flex items-center gap-2 flex-wrap">
+                    {isCurrent && (
+                        <Badge className="bg-blue-600 dark:bg-blue-600">
+                            Current
+                        </Badge>
+                    )}
+                    <h3 className="font-medium text-gray-900 dark:text-white break-words">
                         {story.title}
                     </h3>
                     {story.jiraLink && (
@@ -79,24 +115,81 @@ function SortableStoryItem({
                             href={story.jiraLink}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                            className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex-shrink-0"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <ExternalLink className="w-4 h-4" />
                         </a>
                     )}
+                    {story.finalEstimate !== null && story.finalEstimate !== undefined && (
+                        <Badge variant="secondary" className="font-bold">
+                            {story.finalEstimate} pts
+                        </Badge>
+                    )}
                 </div>
             </div>
-            {onDelete && (
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onDelete(story.id)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                >
-                    <Trash2 className="w-4 h-4" />
-                </Button>
-            )}
+            <div className="flex items-center gap-1">
+                {onEdit && (
+                    <Dialog open={isEditing} onOpenChange={setIsEditing}>
+                        <DialogTrigger asChild>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950"
+                            >
+                                <Edit className="w-4 h-4" />
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Edit Story</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                                <div>
+                                    <Label htmlFor="editTitle">Story Title</Label>
+                                    <Input
+                                        id="editTitle"
+                                        value={editTitle}
+                                        onChange={(e) => setEditTitle(e.target.value)}
+                                        className="mt-1"
+                                    />
+                                </div>
+                                <div>
+                                    <Label htmlFor="editJiraLink">Jira Link (optional)</Label>
+                                    <Input
+                                        id="editJiraLink"
+                                        type="url"
+                                        value={editJiraLink}
+                                        onChange={(e) => setEditJiraLink(e.target.value)}
+                                        className="mt-1"
+                                    />
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button onClick={handleEdit} className="flex-1">
+                                        Save Changes
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setIsEditing(false)}
+                                    >
+                                        Cancel
+                                    </Button>
+                                </div>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+                )}
+                {onDelete && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onDelete(story.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </Button>
+                )}
+            </div>
         </div>
     );
 }
@@ -104,8 +197,15 @@ function SortableStoryItem({
 export function StoryQueueManager({
     roomCode,
     stories: initialStories,
+    currentStoryId,
 }: StoryQueueManagerProps) {
     const [stories, setStories] = useState(initialStories);
+    const [showOnlyUnestimated, setShowOnlyUnestimated] = useState(false);
+
+    // Update stories when initialStories changes
+    useEffect(() => {
+        setStories(initialStories);
+    }, [initialStories]);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -151,15 +251,45 @@ export function StoryQueueManager({
         }
     };
 
+    const handleEdit = async (storyId: string, title: string, jiraLink?: string) => {
+        const result = await updateStory(roomCode, storyId, title, jiraLink);
+        if (result.success) {
+            setStories(
+                stories.map((s) =>
+                    s.id === storyId ? { ...s, title, jiraLink } : s
+                )
+            );
+        } else {
+            alert(result.error || "Failed to update story");
+        }
+    };
+
+    // Filter stories based on the toggle
+    const filteredStories = showOnlyUnestimated
+        ? stories.filter((s) => s.finalEstimate === null || s.finalEstimate === undefined)
+        : stories;
+
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Story Queue ({stories.length})</CardTitle>
+                <div className="flex items-center justify-between">
+                    <CardTitle>Story Queue ({filteredStories.length}/{stories.length})</CardTitle>
+                    <Button
+                        variant={showOnlyUnestimated ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setShowOnlyUnestimated(!showOnlyUnestimated)}
+                    >
+                        <Filter className="w-4 h-4 mr-2" />
+                        {showOnlyUnestimated ? "Show All" : "Only Unestimated"}
+                    </Button>
+                </div>
             </CardHeader>
             <CardContent>
-                {stories.length === 0 ? (
+                {filteredStories.length === 0 ? (
                     <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-                        No stories in queue. Add stories to get started.
+                        {showOnlyUnestimated
+                            ? "No unestimated stories. All stories have estimates!"
+                            : "No stories in queue. Add stories to get started."}
                     </p>
                 ) : (
                     <DndContext
@@ -168,15 +298,17 @@ export function StoryQueueManager({
                         onDragEnd={handleDragEnd}
                     >
                         <SortableContext
-                            items={stories.map((s) => s.id)}
+                            items={filteredStories.map((s) => s.id)}
                             strategy={verticalListSortingStrategy}
                         >
                             <div className="space-y-2">
-                                {stories.map((story) => (
+                                {filteredStories.map((story) => (
                                     <SortableStoryItem
                                         key={story.id}
                                         story={story}
                                         onDelete={handleDelete}
+                                        onEdit={handleEdit}
+                                        isCurrent={story.id === currentStoryId}
                                     />
                                 ))}
                             </div>

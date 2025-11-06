@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader } from "@/components/ui/loader";
 import {
@@ -20,6 +21,9 @@ import {
     startVoting,
     nextStory,
     addStoryToQueue,
+    addMultipleStoriesToQueue,
+    setFinalEstimate,
+    updateJiraBaseUrl,
 } from "@/app/actions/room-actions";
 import type { Room } from "@/lib/types";
 import { logger } from "@/lib/logger";
@@ -31,9 +35,13 @@ import {
     RotateCcw,
     Users,
     List,
+    TrendingUp,
+    Save,
+    Settings,
 } from "lucide-react";
 import { ParticipantsManager } from "./participants-manager";
 import { StoryQueueManager } from "./story-queue-manager";
+import { VoteSummary } from "./vote-summary";
 
 interface ScrumMasterPanelProps {
     room: Room;
@@ -48,14 +56,23 @@ export function ScrumMasterPanel({
 }: ScrumMasterPanelProps) {
     const [isAddingStory, setIsAddingStory] = useState(false);
     const [storyTitle, setStoryTitle] = useState("");
+    const [multipleStories, setMultipleStories] = useState("");
     const [jiraLink, setJiraLink] = useState("");
+    const [isMultipleMode, setIsMultipleMode] = useState(false);
     const [timerMinutes, setTimerMinutes] = useState<number>(2);
+    const [showSettings, setShowSettings] = useState(false);
+    const [jiraBaseUrl, setJiraBaseUrl] = useState(room.jiraBaseUrl || "");
+    const [isSavingSettings, setIsSavingSettings] = useState(false);
     const [showParticipants, setShowParticipants] = useState(false);
     const [showStoryQueue, setShowStoryQueue] = useState(false);
     const [isStartingVote, setIsStartingVote] = useState(false);
     const [isRevealing, setIsRevealing] = useState(false);
     const [isMovingNext, setIsMovingNext] = useState(false);
     const [isAddingToQueue, setIsAddingToQueue] = useState(false);
+    const [showVoteSummary, setShowVoteSummary] = useState(false);
+    const [showFinalEstimate, setShowFinalEstimate] = useState(false);
+    const [finalEstimateValue, setFinalEstimateValue] = useState<number>(0);
+    const [isSavingEstimate, setIsSavingEstimate] = useState(false);
 
     const handleStartVoting = async () => {
         setIsStartingVote(true);
@@ -98,18 +115,54 @@ export function ScrumMasterPanel({
 
     const handleAddStory = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!storyTitle.trim()) return;
 
         setIsAddingToQueue(true);
         try {
-            const story = {
-                id: `story-${Date.now()}`,
-                title: storyTitle,
-                jiraLink: jiraLink || undefined,
-            };
-            await addStoryToQueue(room.code, story);
-            setStoryTitle("");
-            setJiraLink("");
+            if (isMultipleMode) {
+                // Parse multiple stories from textarea
+                const lines = multipleStories.split('\n').filter(line => line.trim());
+                if (lines.length === 0) {
+                    alert("Please enter at least one story");
+                    setIsAddingToQueue(false);
+                    return;
+                }
+
+                const stories = lines.map(line => {
+                    const title = line.trim();
+                    // Check if the line contains a Jira ID (4 digits)
+                    const jiraMatch = title.match(/(\d{4})/);
+                    let jiraLink: string | undefined = undefined;
+
+                    if (jiraMatch && room.jiraBaseUrl) {
+                        jiraLink = room.jiraBaseUrl + jiraMatch[1];
+                    }
+
+                    return {
+                        title,
+                        jiraLink,
+                    };
+                });
+
+                await addMultipleStoriesToQueue(room.code, stories);
+                setMultipleStories("");
+            } else {
+                // Single story mode
+                if (!storyTitle.trim()) {
+                    alert("Please enter a story title");
+                    setIsAddingToQueue(false);
+                    return;
+                }
+
+                const story = {
+                    id: `story-${Date.now()}`,
+                    title: storyTitle,
+                    jiraLink: jiraLink || undefined,
+                };
+                await addStoryToQueue(room.code, story);
+                setStoryTitle("");
+                setJiraLink("");
+            }
+
             setIsAddingStory(false);
             await onUpdate();
         } catch (error) {
@@ -119,10 +172,57 @@ export function ScrumMasterPanel({
         }
     };
 
-    // Only count online participants for voting
-    const onlineParticipants = room.participants.filter((p) => p.isOnline);
-    const votedCount = onlineParticipants.filter((p) => p.vote !== null).length;
-    const totalCount = onlineParticipants.length;
+    const handleSaveSettings = async () => {
+        setIsSavingSettings(true);
+        try {
+            await updateJiraBaseUrl(room.code, jiraBaseUrl);
+            setShowSettings(false);
+            await onUpdate();
+        } catch (error) {
+            logger.error("Failed to save settings:", error);
+        } finally {
+            setIsSavingSettings(false);
+        }
+    };
+
+    const handleSaveFinalEstimate = async () => {
+        if (!room.currentStory) return;
+
+        setIsSavingEstimate(true);
+        try {
+            await setFinalEstimate(
+                room.code,
+                room.currentStory.id,
+                finalEstimateValue
+            );
+            setShowFinalEstimate(false);
+            await onUpdate();
+        } catch (error) {
+            logger.error("Failed to save final estimate:", error);
+        } finally {
+            setIsSavingEstimate(false);
+        }
+    };
+
+    // Calculate suggested estimate from votes
+    const getSuggestedEstimate = () => {
+        const voters = room.participants.filter((p) => p.vote !== null);
+        if (voters.length === 0) return 0;
+
+        const votes = voters.map((p) => p.vote as number);
+        const sorted = [...votes].sort((a, b) => a - b);
+        const median =
+            sorted.length % 2 === 0
+                ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+                : sorted[Math.floor(sorted.length / 2)];
+
+        return Math.round(median);
+    };
+
+    // Only count online participants who are voters
+    const onlineVoters = room.participants.filter((p) => p.isOnline && p.isVoter);
+    const votedCount = onlineVoters.filter((p) => p.vote !== null).length;
+    const totalCount = onlineVoters.length;
 
     return (
         <Card className="border-2 border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
@@ -218,45 +318,92 @@ export function ScrumMasterPanel({
                                 <DialogContent>
                                     <DialogHeader>
                                         <DialogTitle>
-                                            Add Story to Queue
+                                            Add {isMultipleMode ? "Stories" : "Story"} to Queue
                                         </DialogTitle>
                                     </DialogHeader>
                                     <form
                                         onSubmit={handleAddStory}
                                         className="space-y-4"
                                     >
-                                        <div>
-                                            <Label htmlFor="storyTitle">
-                                                Story Title
-                                            </Label>
-                                            <Input
-                                                id="storyTitle"
-                                                placeholder="Enter story title"
-                                                value={storyTitle}
-                                                onChange={(e) =>
-                                                    setStoryTitle(
-                                                        e.target.value
-                                                    )
-                                                }
-                                                className="mt-1"
-                                                required
-                                            />
+                                        <div className="flex gap-2 mb-2">
+                                            <Button
+                                                type="button"
+                                                variant={!isMultipleMode ? "default" : "outline"}
+                                                size="sm"
+                                                onClick={() => setIsMultipleMode(false)}
+                                                className="flex-1"
+                                            >
+                                                Single Story
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant={isMultipleMode ? "default" : "outline"}
+                                                size="sm"
+                                                onClick={() => setIsMultipleMode(true)}
+                                                className="flex-1"
+                                            >
+                                                Multiple Stories
+                                            </Button>
                                         </div>
-                                        <div>
-                                            <Label htmlFor="jiraLink">
-                                                Jira Link (optional)
-                                            </Label>
-                                            <Input
-                                                id="jiraLink"
-                                                type="url"
-                                                placeholder="https://..."
-                                                value={jiraLink}
-                                                onChange={(e) =>
-                                                    setJiraLink(e.target.value)
-                                                }
-                                                className="mt-1"
-                                            />
-                                        </div>
+
+                                        {!isMultipleMode ? (
+                                            <>
+                                                <div>
+                                                    <Label htmlFor="storyTitle">
+                                                        Story Title
+                                                    </Label>
+                                                    <Input
+                                                        id="storyTitle"
+                                                        placeholder="Enter story title"
+                                                        value={storyTitle}
+                                                        onChange={(e) =>
+                                                            setStoryTitle(
+                                                                e.target.value
+                                                            )
+                                                        }
+                                                        className="mt-1"
+                                                        required
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="jiraLink">
+                                                        Jira Link (optional)
+                                                    </Label>
+                                                    <Input
+                                                        id="jiraLink"
+                                                        type="url"
+                                                        placeholder="https://..."
+                                                        value={jiraLink}
+                                                        onChange={(e) =>
+                                                            setJiraLink(e.target.value)
+                                                        }
+                                                        className="mt-1"
+                                                    />
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div>
+                                                <Label htmlFor="multipleStories">
+                                                    Stories (one per line)
+                                                </Label>
+                                                <Textarea
+                                                    id="multipleStories"
+                                                    placeholder="Story 1&#10;Story 2 PROJECT-1234&#10;Story 3"
+                                                    value={multipleStories}
+                                                    onChange={(e) =>
+                                                        setMultipleStories(e.target.value)
+                                                    }
+                                                    className="mt-1 min-h-32"
+                                                    required
+                                                />
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    {room.jiraBaseUrl
+                                                        ? "If a line contains a 4-digit number, it will be used as Jira ID"
+                                                        : "Set Jira base URL in settings to auto-link tickets"}
+                                                </p>
+                                            </div>
+                                        )}
+
                                         <div className="flex gap-2">
                                             <Button
                                                 type="submit"
@@ -269,7 +416,7 @@ export function ScrumMasterPanel({
                                                         Adding...
                                                     </>
                                                 ) : (
-                                                    "Add to Queue"
+                                                    `Add to Queue`
                                                 )}
                                             </Button>
                                             <Button
@@ -313,6 +460,80 @@ export function ScrumMasterPanel({
 
                     {room.votesRevealed && (
                         <>
+                            <Dialog
+                                open={showFinalEstimate}
+                                onOpenChange={setShowFinalEstimate}
+                            >
+                                <DialogTrigger asChild>
+                                    <Button
+                                        variant="default"
+                                        className="w-full bg-green-600 hover:bg-green-700"
+                                        size="lg"
+                                        onClick={() => {
+                                            setFinalEstimateValue(getSuggestedEstimate());
+                                            setShowFinalEstimate(true);
+                                        }}
+                                    >
+                                        <Save className="w-4 h-4 mr-2" />
+                                        Set Final Estimate
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Set Final Estimate</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="space-y-4">
+                                        <p className="text-sm text-muted-foreground">
+                                            After discussion, what is the final estimate for this story?
+                                        </p>
+                                        <div>
+                                            <Label htmlFor="finalEstimate">
+                                                Story Points
+                                            </Label>
+                                            <Input
+                                                id="finalEstimate"
+                                                type="number"
+                                                value={finalEstimateValue}
+                                                onChange={(e) =>
+                                                    setFinalEstimateValue(
+                                                        parseInt(e.target.value) || 0
+                                                    )
+                                                }
+                                                className="mt-1"
+                                                min="0"
+                                            />
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Suggested: {getSuggestedEstimate()} (median of votes)
+                                            </p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                onClick={handleSaveFinalEstimate}
+                                                className="flex-1"
+                                                disabled={isSavingEstimate}
+                                            >
+                                                {isSavingEstimate ? (
+                                                    <>
+                                                        <Loader size="sm" className="mr-2" />
+                                                        Saving...
+                                                    </>
+                                                ) : (
+                                                    "Save Estimate"
+                                                )}
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => setShowFinalEstimate(false)}
+                                                disabled={isSavingEstimate}
+                                            >
+                                                Cancel
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </DialogContent>
+                            </Dialog>
+
                             <Button
                                 onClick={handleNextStory}
                                 className="w-full"
@@ -423,14 +644,102 @@ export function ScrumMasterPanel({
                                 Manage Queue
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                             <DialogHeader>
                                 <DialogTitle>Manage Story Queue</DialogTitle>
                             </DialogHeader>
                             <StoryQueueManager
                                 roomCode={room.code}
                                 stories={room.storyQueue}
+                                currentStoryId={room.currentStory?.id}
                             />
+                        </DialogContent>
+                    </Dialog>
+
+                    <Dialog
+                        open={showVoteSummary}
+                        onOpenChange={setShowVoteSummary}
+                    >
+                        <DialogTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                            >
+                                <TrendingUp className="w-4 h-4 mr-2" />
+                                View Vote Summary
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                            <DialogHeader>
+                                <DialogTitle>Vote Summary & History</DialogTitle>
+                            </DialogHeader>
+                            <VoteSummary roomCode={room.code} />
+                        </DialogContent>
+                    </Dialog>
+
+                    <Dialog
+                        open={showSettings}
+                        onOpenChange={setShowSettings}
+                    >
+                        <DialogTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                            >
+                                <Settings className="w-4 h-4 mr-2" />
+                                Settings
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Room Settings</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                                <div>
+                                    <Label htmlFor="jiraBaseUrl">
+                                        Jira Base URL (optional)
+                                    </Label>
+                                    <Input
+                                        id="jiraBaseUrl"
+                                        type="url"
+                                        placeholder="https://jira.example.com/browse/PROJECT-"
+                                        value={jiraBaseUrl}
+                                        onChange={(e) =>
+                                            setJiraBaseUrl(e.target.value)
+                                        }
+                                        className="mt-1"
+                                    />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        When importing multiple stories, 4-digit numbers will be automatically linked using this base URL
+                                    </p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button
+                                        onClick={handleSaveSettings}
+                                        className="flex-1"
+                                        disabled={isSavingSettings}
+                                    >
+                                        {isSavingSettings ? (
+                                            <>
+                                                <Loader size="sm" className="mr-2" />
+                                                Saving...
+                                            </>
+                                        ) : (
+                                            "Save Settings"
+                                        )}
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => setShowSettings(false)}
+                                        disabled={isSavingSettings}
+                                    >
+                                        Cancel
+                                    </Button>
+                                </div>
+                            </div>
                         </DialogContent>
                     </Dialog>
                 </div>
