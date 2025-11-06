@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader, Skeleton } from "@/components/ui/loader";
 import type { FibonacciValue } from "@/lib/types";
-import { Copy, Check, ExternalLink, Settings, TrendingUp } from "lucide-react";
+import { Copy, Check, ExternalLink, Settings, TrendingUp, Filter } from "lucide-react";
 import { ScrumMasterPanel } from "@/components/scrum-master-panel";
 import { VotingResults } from "@/components/voting-results";
 import { VotingTimer } from "@/components/voting-timer";
@@ -27,8 +27,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { logger } from "@/lib/logger";
-
-const FIBONACCI_VALUES: FibonacciValue[] = [0, 1, 2, 3, 5, 8, 13, 20, 40, 100];
+import { FIBONACCI_VALUES } from "@/lib/constants";
 
 export default function RoomPage({
     params,
@@ -501,8 +500,9 @@ export default function RoomPage({
                                     <div className="space-y-2">
                                         {room.storyQueue
                                             .filter(story => !showOnlyUnestimated || story.finalEstimate === null || story.finalEstimate === undefined)
-                                            .map((story, index) => {
+                                            .map((story) => {
                                             const isCurrent = story.id === room.currentStory?.id;
+                                            const actualIndex = room.storyQueue.findIndex(s => s.id === story.id);
                                             return (
                                                 <div
                                                     key={story.id}
@@ -517,7 +517,7 @@ export default function RoomPage({
                                                             variant="outline"
                                                             className="mt-0.5 flex-shrink-0"
                                                         >
-                                                            {index + 1}
+                                                            {actualIndex + 1}
                                                         </Badge>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center gap-2 flex-wrap mb-1">

@@ -2,6 +2,7 @@
 
 import { supabaseServer } from "@/lib/db-supabase";
 import type { Room, Story } from "@/lib/types";
+import { FIBONACCI_VALUES } from "@/lib/constants";
 
 // Helper function to generate a random room code
 function generateRoomCode(): string {
@@ -407,6 +408,9 @@ export async function nextStory(code: string) {
 
     // If there's a current story without a final estimate, calculate consensus from votes
     if (currentStory && (currentStory.final_estimate === null || currentStory.final_estimate === undefined)) {
+        // Note: The votes table only contains votes for the current story.
+        // Votes are cleared when starting voting and when moving to the next story.
+        // Therefore, filtering by room_code is sufficient.
         const { data: votes } = await supabaseServer
             .from("votes")
             .select("vote_value")
@@ -414,7 +418,6 @@ export async function nextStory(code: string) {
 
         // If there are votes, calculate the consensus (median rounded to nearest Fibonacci value)
         if (votes && votes.length > 0) {
-            const FIBONACCI_VALUES = [0, 1, 2, 3, 5, 8, 13, 20, 40, 100];
             const voteValues = votes.map(v => v.vote_value).filter(v => v !== null) as number[];
 
             if (voteValues.length > 0) {
