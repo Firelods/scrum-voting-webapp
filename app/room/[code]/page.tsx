@@ -216,6 +216,7 @@ export default function RoomPage({
         (p) => p.id === participantId
     );
     const isScumMaster = currentParticipant?.isScumMaster || false;
+    const isVoter = currentParticipant?.isVoter ?? true; // Default to true for backward compatibility
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 p-4 md:p-6">
@@ -385,59 +386,75 @@ export default function RoomPage({
                                 <CardTitle>Select Your Estimate</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                {!room.votingActive && !room.votesRevealed && (
+                                {!isVoter ? (
                                     <div className="text-center py-12">
+                                        <Badge variant="secondary" className="mb-4 text-base px-4 py-2">
+                                            Observer Mode
+                                        </Badge>
                                         <p className="text-gray-600 dark:text-gray-400 text-lg">
-                                            Waiting for Scrum Master to start
-                                            voting...
+                                            You are participating as an observer.
+                                        </p>
+                                        <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">
+                                            You can follow the voting but cannot submit your own vote.
                                         </p>
                                     </div>
-                                )}
-
-                                {room.votingActive && (
-                                    <div className="relative flex flex-wrap justify-center gap-3 md:gap-4">
-                                        {isSubmittingVote && (
-                                            <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-800/50 rounded-lg z-10">
-                                                <Loader size="md" className="text-blue-600 dark:text-blue-400" />
+                                ) : (
+                                    <>
+                                        {!room.votingActive && !room.votesRevealed && (
+                                            <div className="text-center py-12">
+                                                <p className="text-gray-600 dark:text-gray-400 text-lg">
+                                                    Waiting for Scrum Master to start
+                                                    voting...
+                                                </p>
                                             </div>
                                         )}
-                                        {FIBONACCI_VALUES.map((value) => (
-                                            <FibonacciCard
-                                                key={value}
-                                                value={value}
-                                                selected={
-                                                    selectedVote === value
-                                                }
-                                                onClick={() =>
-                                                    handleVote(value)
-                                                }
-                                                disabled={!room.votingActive || isSubmittingVote}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
 
-                                {room.votesRevealed && (
-                                    <div className="flex flex-wrap justify-center gap-3 md:gap-4">
-                                        {FIBONACCI_VALUES.map((value) => {
-                                            const count =
-                                                room.participants.filter(
-                                                    (p) => p.vote === value
-                                                ).length;
-                                            return (
-                                                <FibonacciCard
-                                                    key={value}
-                                                    value={value}
-                                                    selected={
-                                                        selectedVote === value
-                                                    }
-                                                    disabled
-                                                    revealed
-                                                    count={count}
-                                                />
-                                            );
-                                        })}
-                                    </div>
+                                        {room.votingActive && (
+                                            <div className="relative flex flex-wrap justify-center gap-3 md:gap-4">
+                                                {isSubmittingVote && (
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-800/50 rounded-lg z-10">
+                                                        <Loader size="md" className="text-blue-600 dark:text-blue-400" />
+                                                    </div>
+                                                )}
+                                                {FIBONACCI_VALUES.map((value) => (
+                                                    <FibonacciCard
+                                                        key={value}
+                                                        value={value}
+                                                        selected={
+                                                            selectedVote === value
+                                                        }
+                                                        onClick={() =>
+                                                            handleVote(value)
+                                                        }
+                                                        disabled={!room.votingActive || isSubmittingVote}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {room.votesRevealed && (
+                                            <div className="flex flex-wrap justify-center gap-3 md:gap-4">
+                                                {FIBONACCI_VALUES.map((value) => {
+                                                    const count =
+                                                        room.participants.filter(
+                                                            (p) => p.vote === value
+                                                        ).length;
+                                                    return (
+                                                        <FibonacciCard
+                                                            key={value}
+                                                            value={value}
+                                                            selected={
+                                                                selectedVote === value
+                                                            }
+                                                            disabled
+                                                            revealed
+                                                            count={count}
+                                                        />
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </CardContent>
                         </Card>
