@@ -26,9 +26,9 @@ interface VotingResultsProps {
 export function VotingResults({ room }: VotingResultsProps) {
     if (!room.votesRevealed) return null;
 
-    // Calculate statistics - only count online participants
-    const onlineParticipants = room.participants.filter((p) => p.isOnline);
-    const votes = onlineParticipants
+    // Calculate statistics - only count online participants who are voters
+    const onlineVoters = room.participants.filter((p) => p.isOnline && p.isVoter);
+    const votes = onlineVoters
         .map((p) => p.vote)
         .filter((v) => v !== null) as number[];
 
