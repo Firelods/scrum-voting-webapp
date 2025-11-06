@@ -506,14 +506,8 @@ export async function addStoryToQueue(code: string, story: Story) {
         return { success: false, error: "Failed to add story" };
     }
 
-    const { error: updateError } = await supabaseServer
-        .from("rooms")
-        .update({ last_activity: new Date().toISOString() })
-        .eq("code", code);
-
-    if (updateError) {
-        console.error("Error updating room activity:", updateError);
-    }
+    // Note: Not updating last_activity to avoid triggering unnecessary realtime events
+    // The stories table insert will trigger its own realtime event
 
     const room = await buildRoomObject(code);
     if (!room) {
@@ -546,15 +540,8 @@ export async function reorderStories(
             return { success: false, error: "Failed to reorder stories" };
         }
 
-        // Update last activity
-        const { error: updateError } = await supabaseServer
-            .from("rooms")
-            .update({ last_activity: new Date().toISOString() })
-            .eq("code", code);
-
-        if (updateError) {
-            console.error("Error updating room activity:", updateError);
-        }
+        // Note: Not updating last_activity to avoid triggering unnecessary realtime events
+        // The stories table update will trigger its own realtime event
 
         return { success: true };
     } catch (error) {
@@ -665,15 +652,8 @@ export async function deleteStory(
             await Promise.all(updatePromises);
         }
 
-        // Update last activity
-        const { error: updateError } = await supabaseServer
-            .from("rooms")
-            .update({ last_activity: new Date().toISOString() })
-            .eq("code", code);
-
-        if (updateError) {
-            console.error("Error updating room activity:", updateError);
-        }
+        // Note: Not updating last_activity to avoid triggering unnecessary realtime events
+        // The stories table updates will trigger their own realtime events
 
         return { success: true };
     } catch (error) {
@@ -751,10 +731,8 @@ export async function updateStory(
             return { success: false, error: "Failed to update story" };
         }
 
-        await supabaseServer
-            .from("rooms")
-            .update({ last_activity: new Date().toISOString() })
-            .eq("code", code);
+        // Note: Not updating last_activity to avoid triggering unnecessary realtime events
+        // The stories table update will trigger its own realtime event
 
         return { success: true };
     } catch (error) {
@@ -794,10 +772,8 @@ export async function addMultipleStoriesToQueue(
             return { success: false, error: "Failed to add stories" };
         }
 
-        await supabaseServer
-            .from("rooms")
-            .update({ last_activity: new Date().toISOString() })
-            .eq("code", code);
+        // Note: Not updating last_activity to avoid triggering unnecessary realtime events
+        // The stories table inserts will trigger their own realtime events
 
         return { success: true };
     } catch (error) {
