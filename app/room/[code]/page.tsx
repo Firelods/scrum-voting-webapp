@@ -101,7 +101,7 @@ export default function RoomPage({
         setIsSubmittingVote(true);
         try {
             await submitVote(code, participantId, value);
-            await mutate();
+            // WebSocket will automatically trigger an update, no need to call mutate()
         } catch (error) {
             logger.error("Failed to submit vote:", error);
         } finally {

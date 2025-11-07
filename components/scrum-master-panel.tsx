@@ -81,7 +81,7 @@ export function ScrumMasterPanel({
                 timerMinutes > 0 ? timerMinutes * 60 : undefined;
             // Ne pas passer currentStory car elle est déjà dans la queue
             await startVoting(room.code, undefined, timerSeconds);
-            await onUpdate();
+            // WebSocket will automatically trigger an update
         } catch (error) {
             logger.error("Failed to start voting:", error);
         } finally {
@@ -93,7 +93,7 @@ export function ScrumMasterPanel({
         setIsRevealing(true);
         try {
             await revealVotes(room.code);
-            await onUpdate();
+            // WebSocket will automatically trigger an update
         } catch (error) {
             logger.error("Failed to reveal votes:", error);
         } finally {
@@ -105,7 +105,7 @@ export function ScrumMasterPanel({
         setIsMovingNext(true);
         try {
             await nextStory(room.code);
-            await onUpdate();
+            // WebSocket will automatically trigger an update
         } catch (error) {
             logger.error("Failed to move to next story:", error);
         } finally {
@@ -164,7 +164,7 @@ export function ScrumMasterPanel({
             }
 
             setIsAddingStory(false);
-            await onUpdate();
+            // WebSocket will automatically trigger an update
         } catch (error) {
             logger.error("Failed to add story:", error);
         } finally {
@@ -177,7 +177,7 @@ export function ScrumMasterPanel({
         try {
             await updateJiraBaseUrl(room.code, jiraBaseUrl);
             setShowSettings(false);
-            await onUpdate();
+            // WebSocket will automatically trigger an update
         } catch (error) {
             logger.error("Failed to save settings:", error);
         } finally {
@@ -196,7 +196,7 @@ export function ScrumMasterPanel({
                 finalEstimateValue
             );
             setShowFinalEstimate(false);
-            await onUpdate();
+            // WebSocket will automatically trigger an update
         } catch (error) {
             logger.error("Failed to save final estimate:", error);
         } finally {
