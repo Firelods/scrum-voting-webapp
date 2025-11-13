@@ -16,7 +16,7 @@ function generateRoomCode(): string {
 
 // Helper function to build Room object from database rows
 async function buildRoomObject(code: string): Promise<Room | null> {
-    // Fetch room data
+    // Fetch room data first
     const { data: roomData, error: roomError } = await supabaseServer
         .from("rooms")
         .select("*")
@@ -25,46 +25,47 @@ async function buildRoomObject(code: string): Promise<Room | null> {
 
     if (roomError || !roomData) return null;
 
-    // Fetch participants
-    const { data: participants, error: participantsError } =
-        await supabaseServer
+    // Parallelize all dependent queries for better performance
+    const [participantsResult, votesResult, storiesResult] = await Promise.all([
+        supabaseServer
             .from("participants")
             .select("name, is_scrum_master, is_voter")
             .eq("room_code", code)
-            .order("joined_at", { ascending: true });
+            .order("joined_at", { ascending: true }),
+        supabaseServer
+            .from("votes")
+            .select("participant_name, vote_value")
+            .eq("room_code", code),
+        supabaseServer
+            .from("stories")
+            .select("id, title, jira_link, final_estimate, voted_at")
+            .eq("room_code", code)
+            .order("order_index", { ascending: true }),
+    ]);
 
-    if (participantsError) {
-        console.error("Error fetching participants:", participantsError);
+    if (participantsResult.error) {
+        console.error("Error fetching participants:", participantsResult.error);
         return null;
     }
 
-    // Fetch votes separately
-    const { data: votes, error: votesError } = await supabaseServer
-        .from("votes")
-        .select("participant_name, vote_value")
-        .eq("room_code", code);
-
-    if (votesError) {
-        console.error("Error fetching votes:", votesError);
+    if (votesResult.error) {
+        console.error("Error fetching votes:", votesResult.error);
         return null;
     }
+
+    if (storiesResult.error) {
+        console.error("Error fetching stories:", storiesResult.error);
+        return null;
+    }
+
+    const participants = participantsResult.data;
+    const votes = votesResult.data;
+    const stories = storiesResult.data;
 
     // Create a map of votes by participant name
     const voteMap = new Map(
         (votes || []).map((v: any) => [v.participant_name, v.vote_value])
     );
-
-    // Fetch stories
-    const { data: stories, error: storiesError } = await supabaseServer
-        .from("stories")
-        .select("id, title, jira_link, final_estimate, voted_at")
-        .eq("room_code", code)
-        .order("order_index", { ascending: true });
-
-    if (storiesError) {
-        console.error("Error fetching stories:", storiesError);
-        return null;
-    }
 
     const currentStory = (stories || [])[roomData.current_story_index] || null;
 
