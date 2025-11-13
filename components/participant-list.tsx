@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Participant } from "@/lib/types";
-import { Check, Clock, Crown } from "lucide-react";
+import { Check, Clock, Crown, Eye } from "lucide-react";
 
 interface ParticipantListProps {
     participants: Participant[];
@@ -38,24 +38,31 @@ export function ParticipantList({
                                 </span>
                             </div>
                             <div className="flex items-center gap-2">
-                                {/* Afficher le vote seulement si les votes sont révélés */}
-                                {votesRevealed && participant.vote !== null && (
-                                    <Badge
-                                        variant="outline"
-                                        className="font-bold"
-                                    >
-                                        {participant.vote}
-                                    </Badge>
+                                {/* Afficher une icône œil pour les spectateurs */}
+                                {!participant.isVoter ? (
+                                    <Eye className="w-5 h-5 text-blue-500 dark:text-blue-400" />
+                                ) : (
+                                    <>
+                                        {/* Afficher le vote seulement si les votes sont révélés */}
+                                        {votesRevealed && participant.vote !== null && (
+                                            <Badge
+                                                variant="outline"
+                                                className="font-bold"
+                                            >
+                                                {participant.vote}
+                                            </Badge>
+                                        )}
+                                        {/* Sinon afficher juste le statut voté/pas voté */}
+                                        {!votesRevealed &&
+                                            participant.vote !== null && (
+                                                <Check className="w-5 h-5 text-green-500 dark:text-green-400" />
+                                            )}
+                                        {!votesRevealed &&
+                                            participant.vote === null && (
+                                                <Clock className="w-5 h-5 text-gray-400 dark:text-gray-500" />
+                                            )}
+                                    </>
                                 )}
-                                {/* Sinon afficher juste le statut voté/pas voté */}
-                                {!votesRevealed &&
-                                    participant.vote !== null && (
-                                        <Check className="w-5 h-5 text-green-500 dark:text-green-400" />
-                                    )}
-                                {!votesRevealed &&
-                                    participant.vote === null && (
-                                        <Clock className="w-5 h-5 text-gray-400 dark:text-gray-500" />
-                                    )}
                             </div>
                         </div>
                     ))}
