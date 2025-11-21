@@ -67,7 +67,10 @@ async function buildRoomObject(code: string): Promise<Room | null> {
         (votes || []).map((v: any) => [v.participant_name, v.vote_value])
     );
 
-    const currentStory = (stories || [])[roomData.current_story_index] || null;
+    // Find current story by ID (more robust than index-based lookup)
+    const currentStory = roomData.current_story_id
+        ? (stories || []).find((s: any) => s.id === roomData.current_story_id) || null
+        : null;
 
     return {
         code: roomData.code,
@@ -239,10 +242,10 @@ export async function submitVote(
 }
 
 export async function revealVotes(code: string) {
-    // First, get the current story and votes
+    // First, get the current story ID
     const { data: roomData } = await supabaseServer
         .from("rooms")
-        .select("current_story_index")
+        .select("current_story_id")
         .eq("code", code)
         .single();
 
@@ -250,14 +253,16 @@ export async function revealVotes(code: string) {
         return { success: false, error: "Room not found" };
     }
 
-    // Get the current story
-    const { data: stories } = await supabaseServer
-        .from("stories")
-        .select("id, title")
-        .eq("room_code", code)
-        .order("order_index", { ascending: true });
-
-    const currentStory = stories?.[roomData.current_story_index];
+    // Get the current story by ID
+    let currentStory = null;
+    if (roomData.current_story_id) {
+        const { data: storyData } = await supabaseServer
+            .from("stories")
+            .select("id, title")
+            .eq("id", roomData.current_story_id)
+            .single();
+        currentStory = storyData;
+    }
 
     // Get all current votes
     const { data: votes } = await supabaseServer
@@ -387,10 +392,10 @@ export async function startVoting(
 }
 
 export async function nextStory(code: string) {
-    // Get current story index and stories
+    // Get current story ID
     const { data: roomData, error: roomError } = await supabaseServer
         .from("rooms")
-        .select("current_story_index")
+        .select("current_story_id")
         .eq("code", code)
         .single();
 
@@ -398,14 +403,17 @@ export async function nextStory(code: string) {
         return { success: false, error: "Room not found" };
     }
 
-    // Get the current story
+    // Get all stories ordered by order_index
     const { data: stories } = await supabaseServer
         .from("stories")
-        .select("id, title, final_estimate")
+        .select("id, title, final_estimate, order_index")
         .eq("room_code", code)
         .order("order_index", { ascending: true });
 
-    const currentStory = stories?.[roomData.current_story_index];
+    // Find the current story by ID
+    const currentStory = roomData.current_story_id
+        ? stories?.find(s => s.id === roomData.current_story_id)
+        : null;
 
     // If there's a current story without a final estimate, calculate consensus from votes
     if (currentStory && (currentStory.final_estimate === null || currentStory.final_estimate === undefined)) {
@@ -429,10 +437,12 @@ export async function nextStory(code: string) {
                     : sorted[Math.floor(sorted.length / 2)];
 
                 // Find closest Fibonacci value to the median
-                let consensus = FIBONACCI_VALUES[0];
+                // Cast to number[] since FIBONACCI_VALUES only contains numbers (null is excluded in practice)
+                const fibNumbers = FIBONACCI_VALUES.filter(v => v !== null) as number[];
+                let consensus = fibNumbers[0];
                 let minDiff = Math.abs(median - consensus);
 
-                for (const fibValue of FIBONACCI_VALUES) {
+                for (const fibValue of fibNumbers) {
                     const diff = Math.abs(median - fibValue);
                     if (diff < minDiff) {
                         minDiff = diff;
@@ -445,6 +455,30 @@ export async function nextStory(code: string) {
                     .from("stories")
                     .update({ final_estimate: consensus })
                     .eq("id", currentStory.id);
+            }
+        }
+    }
+
+    // Find the next unestimated story after the current one
+    let nextStoryId: number | null = null;
+    if (stories && stories.length > 0) {
+        const currentOrderIndex = currentStory?.order_index ?? -1;
+
+        // First, look for unestimated stories after the current one
+        const nextUnestimated = stories.find(
+            s => s.order_index > currentOrderIndex &&
+                 (s.final_estimate === null || s.final_estimate === undefined)
+        );
+
+        if (nextUnestimated) {
+            nextStoryId = nextUnestimated.id;
+        } else {
+            // If no unestimated stories after current, look from the beginning
+            const firstUnestimated = stories.find(
+                s => s.final_estimate === null || s.final_estimate === undefined
+            );
+            if (firstUnestimated) {
+                nextStoryId = firstUnestimated.id;
             }
         }
     }
@@ -462,7 +496,7 @@ export async function nextStory(code: string) {
     const { error: updateError } = await supabaseServer
         .from("rooms")
         .update({
-            current_story_index: roomData.current_story_index + 1,
+            current_story_id: nextStoryId,
             voting_state: "idle",
             votes_revealed: false,
             timer_duration: null,
@@ -551,6 +585,60 @@ export async function reorderStories(
     }
 }
 
+export async function setCurrentStory(
+    code: string,
+    storyId: string | null
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        // Verify the story exists if a storyId is provided
+        if (storyId) {
+            const { data: story, error: storyError } = await supabaseServer
+                .from("stories")
+                .select("id")
+                .eq("id", parseInt(storyId))
+                .eq("room_code", code)
+                .single();
+
+            if (storyError || !story) {
+                return { success: false, error: "Story not found" };
+            }
+        }
+
+        // Clear votes when changing the current story
+        const { error: deleteVotesError } = await supabaseServer
+            .from("votes")
+            .delete()
+            .eq("room_code", code);
+
+        if (deleteVotesError) {
+            console.error("Error deleting votes:", deleteVotesError);
+        }
+
+        // Update the current story
+        const { error: updateError } = await supabaseServer
+            .from("rooms")
+            .update({
+                current_story_id: storyId ? parseInt(storyId) : null,
+                voting_state: "idle",
+                votes_revealed: false,
+                timer_duration: null,
+                timer_end_time: null,
+                last_activity: new Date().toISOString(),
+            })
+            .eq("code", code);
+
+        if (updateError) {
+            console.error("Error updating current story:", updateError);
+            return { success: false, error: "Failed to set current story" };
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to set current story:", error);
+        return { success: false, error: "Failed to set current story" };
+    }
+}
+
 export async function kickParticipant(
     code: string,
     participantName: string
@@ -618,6 +706,15 @@ export async function deleteStory(
     storyId: string
 ): Promise<{ success: boolean; error?: string }> {
     try {
+        // Check if the story being deleted is the current story
+        const { data: roomData } = await supabaseServer
+            .from("rooms")
+            .select("current_story_id")
+            .eq("code", code)
+            .single();
+
+        const isCurrentStory = roomData?.current_story_id === parseInt(storyId);
+
         // Delete the story
         const { error: deleteError } = await supabaseServer
             .from("stories")
@@ -633,7 +730,7 @@ export async function deleteStory(
         // Reorder remaining stories
         const { data: stories, error: fetchError } = await supabaseServer
             .from("stories")
-            .select("id")
+            .select("id, final_estimate")
             .eq("room_code", code)
             .order("order_index", { ascending: true });
 
@@ -651,6 +748,26 @@ export async function deleteStory(
             );
 
             await Promise.all(updatePromises);
+        }
+
+        // If the deleted story was the current story, move to next unestimated story
+        if (isCurrentStory) {
+            let nextStoryId: number | null = null;
+            if (stories && stories.length > 0) {
+                const firstUnestimated = stories.find(
+                    (s: any) => s.final_estimate === null || s.final_estimate === undefined
+                );
+                nextStoryId = firstUnestimated?.id || null;
+            }
+
+            await supabaseServer
+                .from("rooms")
+                .update({
+                    current_story_id: nextStoryId,
+                    voting_state: "idle",
+                    votes_revealed: false,
+                })
+                .eq("code", code);
         }
 
         // Note: Not updating last_activity to avoid triggering unnecessary realtime events
