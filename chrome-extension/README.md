@@ -61,14 +61,17 @@ chrome-extension/
 └── icons/                 # Icônes de l'extension
 ```
 
-## Fonctionnalités
+## Fonctionnalites
 
-- Récupération d'issues Jira
+- Recuperation d'issues Jira
 - Lecture des Story Points
-- Mise à jour des Story Points
+- Mise a jour des Story Points
+- Affichage des Story Points Jira dans Scrum Vote
+- Indicateur de synchronisation (vert = synchro, orange = different)
 - Recherche JQL
-- Extraction automatique des clés d'issues
-- Détection automatique des champs Story Points
+- Extraction automatique des cles d'issues
+- Detection automatique des champs Story Points
+- Mode debug optionnel pour le troubleshooting
 
 ## Utilisation depuis la Webapp
 
@@ -120,7 +123,27 @@ if (isExtensionInstalled()) {
 2. Allez sur `chrome://extensions/`
 3. Cliquez sur le bouton **Recharger** de l'extension
 
-### Debug
+### Mode Debug
+
+Les logs de debug sont desactives par defaut pour eviter d'encombrer la console en production.
+
+**Pour activer les logs de debug:**
+
+1. Ouvrez la console du navigateur (F12) sur la page Scrum Vote
+2. Executez : `JiraBridgeDebug.enable()`
+3. Rechargez la page
+
+**Pour desactiver:**
+```javascript
+JiraBridgeDebug.disable()
+```
+
+**Pour verifier si le debug est actif:**
+```javascript
+JiraBridgeDebug.isEnabled()
+```
+
+### Acceder aux logs
 
 - **Service Worker** : Cliquez sur "Inspecter les vues : service worker" dans chrome://extensions
 - **Popup** : Clic droit sur le popup > Inspecter
@@ -162,4 +185,23 @@ L'extension requiert :
 - `storage` : Sauvegarde de la configuration
 - `tabs` : Trouver et communiquer avec les onglets Jira
 - `scripting` : Injecter des scripts si nécessaire
-- `host_permissions` : Accès à `https://jira.urssaf.recouv/*` et `localhost`
+- `host_permissions` : Acces a `https://jira.urssaf.recouv/*` et `localhost`
+
+## Version
+
+**Actuelle: 1.1.0**
+
+### Changelog
+
+#### 1.1.0
+- Ajout de l'affichage des Story Points Jira dans Scrum Vote
+- Ajout de l'indicateur de synchronisation (vert = synchro, orange = different)
+- Ajout du mode debug optionnel (desactive par defaut)
+- Correction de la gestion des reponses 204 No Content
+- Support des URLs 127.0.0.1 et vercel.app
+
+#### 1.0.0
+- Version initiale
+- Upload des Story Points vers Jira
+- Detection de connexion Jira
+- Interface de configuration
