@@ -16,6 +16,7 @@ export interface UseJiraBridgeReturn {
   user: JiraConnectionStatus["user"] | null;
   error: string | null;
   checkConnection: () => Promise<void>;
+  getStoryPoints: (jiraKeyOrUrl: string) => Promise<{ storyPoints: number | null; error?: string }>;
   uploadStoryPoints: (
     jiraKeyOrUrl: string,
     storyPoints: number
@@ -92,6 +93,30 @@ export function useJiraBridge(): UseJiraBridgeReturn {
     };
   }, [checkConnection]);
 
+  const getStoryPoints = useCallback(
+    async (jiraKeyOrUrl: string): Promise<{ storyPoints: number | null; error?: string }> => {
+      if (!isInstalled || !isConnected) {
+        return { storyPoints: null, error: "Non connecté" };
+      }
+
+      try {
+        const jiraKey = extractJiraKeyFromText(jiraKeyOrUrl);
+        if (!jiraKey) {
+          return { storyPoints: null, error: "Clé Jira invalide" };
+        }
+
+        const result = await JiraBridge.getStoryPoints(jiraKey);
+        return { storyPoints: result.storyPoints };
+      } catch (err) {
+        return {
+          storyPoints: null,
+          error: err instanceof Error ? err.message : "Erreur inconnue",
+        };
+      }
+    },
+    [isInstalled, isConnected]
+  );
+
   const uploadStoryPoints = useCallback(
     async (
       jiraKeyOrUrl: string,
@@ -167,6 +192,7 @@ export function useJiraBridge(): UseJiraBridgeReturn {
     user,
     error,
     checkConnection,
+    getStoryPoints,
     uploadStoryPoints,
     uploadMultipleStoryPoints,
   };

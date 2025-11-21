@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
     DndContext,
     closestCenter,
@@ -67,6 +67,7 @@ function SortableStoryItem({
     isCurrent,
     uploadStatus,
     isJiraConnected,
+    jiraStoryPoints,
 }: {
     story: Story;
     onDelete?: (id: string) => void;
@@ -76,12 +77,18 @@ function SortableStoryItem({
     isCurrent?: boolean;
     uploadStatus?: UploadStatus;
     isJiraConnected?: boolean;
+    jiraStoryPoints?: number | null;
 }) {
     const [isEditing, setIsEditing] = useState(false);
     const [editTitle, setEditTitle] = useState(story.title);
     const [editJiraLink, setEditJiraLink] = useState(story.jiraLink || "");
 
-    // Peut uploader si: a un lien Jira, a une estimation, et Jira est connecté
+    // Vérifie si les SP sont synchronisés
+    const isSynced = jiraStoryPoints !== null &&
+        jiraStoryPoints !== undefined &&
+        story.finalEstimate === jiraStoryPoints;
+
+    // Peut uploader si: a un lien Jira, a une estimation, Jira connecté, et pas déjà synced
     const canUpload = isJiraConnected &&
         story.jiraLink &&
         story.finalEstimate !== null &&
@@ -138,6 +145,20 @@ function SortableStoryItem({
                             {story.finalEstimate} pts
                         </Badge>
                     )}
+                    {/* Afficher les SP Jira si différents ou pour info */}
+                    {isJiraConnected && jiraStoryPoints !== null && jiraStoryPoints !== undefined && (
+                        <Badge
+                            variant="outline"
+                            className={`flex-shrink-0 ${
+                                isSynced
+                                    ? "border-green-500 text-green-600 dark:text-green-400"
+                                    : "border-orange-500 text-orange-600 dark:text-orange-400"
+                            }`}
+                        >
+                            Jira: {jiraStoryPoints} pts
+                            {isSynced && " ✓"}
+                        </Badge>
+                    )}
                     {story.jiraLink && (
                         <a
                             href={story.jiraLink}
@@ -164,9 +185,11 @@ function SortableStoryItem({
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => onUpload(story)}
-                                    disabled={uploadStatus === "uploading"}
+                                    disabled={uploadStatus === "uploading" || isSynced}
                                     className={
-                                        uploadStatus === "success"
+                                        isSynced
+                                            ? "text-green-600 cursor-default opacity-60"
+                                            : uploadStatus === "success"
                                             ? "text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
                                             : uploadStatus === "error"
                                             ? "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
@@ -175,7 +198,7 @@ function SortableStoryItem({
                                 >
                                     {uploadStatus === "uploading" ? (
                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : uploadStatus === "success" ? (
+                                    ) : isSynced || uploadStatus === "success" ? (
                                         <CheckCircle className="w-4 h-4" />
                                     ) : uploadStatus === "error" ? (
                                         <XCircle className="w-4 h-4" />
@@ -185,10 +208,14 @@ function SortableStoryItem({
                                 </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                                {uploadStatus === "success"
+                                {isSynced
+                                    ? "Déjà synchronisé avec Jira"
+                                    : uploadStatus === "success"
                                     ? "Uploadé sur Jira!"
                                     : uploadStatus === "error"
                                     ? "Erreur lors de l'upload"
+                                    : jiraStoryPoints !== null && jiraStoryPoints !== undefined
+                                    ? `Mettre à jour ${jiraStoryPoints} → ${story.finalEstimate} pts`
                                     : `Upload ${story.finalEstimate} pts sur Jira`}
                             </TooltipContent>
                         </Tooltip>
@@ -279,14 +306,46 @@ export function StoryQueueManager({
     const [showOnlyUnestimated, setShowOnlyUnestimated] = useState(false);
     const [uploadStatuses, setUploadStatuses] = useState<Record<string, UploadStatus>>({});
     const [isUploadingAll, setIsUploadingAll] = useState(false);
+    const [jiraStoryPoints, setJiraStoryPoints] = useState<Record<string, number | null>>({});
+    const [isLoadingJiraSP, setIsLoadingJiraSP] = useState(false);
 
     // Hook Jira Bridge
-    const { isConnected: isJiraConnected, uploadStoryPoints } = useJiraBridge();
+    const { isConnected: isJiraConnected, uploadStoryPoints, getStoryPoints } = useJiraBridge();
 
     // Update stories when initialStories changes
     useEffect(() => {
         setStories(initialStories);
     }, [initialStories]);
+
+    // Récupérer les SP Jira quand connecté
+    const fetchJiraStoryPoints = useCallback(async () => {
+        if (!isJiraConnected) return;
+
+        const storiesWithJira = stories.filter(
+            (s) => s.jiraLink && extractJiraKeyFromText(s.jiraLink || s.title)
+        );
+
+        if (storiesWithJira.length === 0) return;
+
+        setIsLoadingJiraSP(true);
+        const newJiraSP: Record<string, number | null> = {};
+
+        for (const story of storiesWithJira) {
+            const jiraKey = extractJiraKeyFromText(story.jiraLink || story.title);
+            if (jiraKey) {
+                const result = await getStoryPoints(jiraKey);
+                newJiraSP[story.id] = result.storyPoints;
+            }
+        }
+
+        setJiraStoryPoints(newJiraSP);
+        setIsLoadingJiraSP(false);
+    }, [isJiraConnected, stories, getStoryPoints]);
+
+    // Charger les SP Jira quand la connexion change ou les stories changent
+    useEffect(() => {
+        fetchJiraStoryPoints();
+    }, [fetchJiraStoryPoints]);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -311,21 +370,28 @@ export function StoryQueueManager({
             [story.id]: result.success ? "success" : "error",
         }));
 
-        // Reset status après 3 secondes pour success
+        // Si succès, mettre à jour les SP Jira localement
         if (result.success) {
+            setJiraStoryPoints((prev) => ({
+                ...prev,
+                [story.id]: story.finalEstimate!,
+            }));
+
+            // Reset status après 3 secondes pour success
             setTimeout(() => {
                 setUploadStatuses((prev) => ({ ...prev, [story.id]: "idle" }));
             }, 3000);
         }
     };
 
-    // Upload toutes les stories estimées vers Jira
+    // Upload toutes les stories estimées vers Jira (non synced)
     const handleUploadAll = async () => {
         const uploadableStories = stories.filter(
             (s) =>
                 s.finalEstimate !== null &&
                 s.finalEstimate !== undefined &&
-                extractJiraKeyFromText(s.jiraLink || s.title)
+                extractJiraKeyFromText(s.jiraLink || s.title) &&
+                jiraStoryPoints[s.id] !== s.finalEstimate // Pas déjà synced
         );
 
         if (uploadableStories.length === 0) {
@@ -354,12 +420,13 @@ export function StoryQueueManager({
         }
     };
 
-    // Compter les stories uploadables
+    // Compter les stories uploadables (non synchronisées)
     const uploadableCount = stories.filter(
         (s) =>
             s.finalEstimate !== null &&
             s.finalEstimate !== undefined &&
-            extractJiraKeyFromText(s.jiraLink || s.title)
+            extractJiraKeyFromText(s.jiraLink || s.title) &&
+            jiraStoryPoints[s.id] !== s.finalEstimate // Pas déjà synced
     ).length;
 
     const handleDragEnd = async (event: DragEndEvent) => {
@@ -497,6 +564,7 @@ export function StoryQueueManager({
                                         isCurrent={story.id === currentStoryId}
                                         uploadStatus={uploadStatuses[story.id] || "idle"}
                                         isJiraConnected={isJiraConnected}
+                                        jiraStoryPoints={jiraStoryPoints[story.id]}
                                     />
                                 ))}
                             </div>
