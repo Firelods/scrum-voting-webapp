@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Scrum Vote - Jira Bridge",
-  "version": "1.0.0",
-  "description": "Extension pour connecter Scrum Vote avec Jira - Contourne les restrictions CORS",
+  "version": "1.1.0",
+  "description": "Extension pour connecter Scrum Vote avec Jira - Contourne les restrictions CORS et certificats",
   "author": "Scrum Vote Team",
 
   "permissions": [
     "storage",
-    "cookies",
-    "activeTab"
+    "tabs",
+    "scripting"
   ],
 
   "host_permissions": [
@@ -18,8 +18,7 @@
   ],
 
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
 
   "action": {
@@ -47,6 +46,13 @@
         "https://localhost:*/*"
       ],
       "js": ["content/content.js"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "https://jira.example.com/*"
+      ],
+      "js": ["content/jira-injected.js"],
       "run_at": "document_end"
     }
   ],

@@ -67,6 +67,10 @@ function showToast(message, type = 'info') {
 function updateConnectionStatus(status) {
   elements.connectionStatus.className = 'status';
 
+  // Supprimer le bouton d'ouverture Jira s'il existe
+  const existingOpenBtn = document.getElementById('open-jira-btn');
+  if (existingOpenBtn) existingOpenBtn.remove();
+
   if (status.connected) {
     elements.connectionStatus.classList.add('connected');
     elements.statusIcon.textContent = '✓';
@@ -84,8 +88,39 @@ function updateConnectionStatus(status) {
   } else {
     elements.connectionStatus.classList.add('disconnected');
     elements.statusIcon.textContent = '✗';
-    elements.statusText.textContent = status.error || 'Non connecté à Jira';
+
+    // Message d'erreur plus explicite
+    let errorMsg = status.error || 'Non connecté à Jira';
+    if (errorMsg.includes('onglet Jira') || errorMsg.includes('Receiving end')) {
+      errorMsg = 'Aucun onglet Jira ouvert';
+    }
+    elements.statusText.textContent = errorMsg;
     elements.userInfo.classList.add('hidden');
+
+    // Ajouter un bouton pour ouvrir Jira
+    const openBtn = document.createElement('button');
+    openBtn.id = 'open-jira-btn';
+    openBtn.className = 'btn btn-secondary';
+    openBtn.style.marginTop = '10px';
+    openBtn.style.width = '100%';
+    openBtn.textContent = 'Ouvrir Jira dans un nouvel onglet';
+    openBtn.addEventListener('click', openJiraTab);
+    elements.connectionStatus.parentNode.appendChild(openBtn);
+  }
+}
+
+/**
+ * Ouvre un onglet Jira
+ */
+async function openJiraTab() {
+  const config = await sendMessage({ action: 'getConfig' });
+  if (config?.jiraBaseUrl) {
+    await sendMessage({ action: 'openJiraTab' });
+    showToast('Onglet Jira ouvert! Patientez...', 'info');
+    // Attendre un peu et revérifier la connexion
+    setTimeout(checkConnection, 3000);
+  } else {
+    showToast('Configurez d\'abord l\'URL Jira', 'error');
   }
 }
 
