@@ -30,8 +30,8 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-import { GripVertical, Trash2, ExternalLink, Edit, Filter } from "lucide-react";
-import { reorderStories, deleteStory, updateStory } from "@/app/actions/room-actions";
+import { GripVertical, Trash2, ExternalLink, Edit, Filter, Play } from "lucide-react";
+import { reorderStories, deleteStory, updateStory, setCurrentStory } from "@/app/actions/room-actions";
 
 interface Story {
     id: string;
@@ -51,11 +51,13 @@ function SortableStoryItem({
     story,
     onDelete,
     onEdit,
+    onSetCurrent,
     isCurrent,
 }: {
     story: Story;
     onDelete?: (id: string) => void;
     onEdit?: (id: string, title: string, jiraLink?: string) => void;
+    onSetCurrent?: (id: string) => void;
     isCurrent?: boolean;
 }) {
     const [isEditing, setIsEditing] = useState(false);
@@ -129,6 +131,17 @@ function SortableStoryItem({
                 </h3>
             </div>
             <div className="flex items-center gap-1">
+                {onSetCurrent && !isCurrent && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onSetCurrent(story.id)}
+                        className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+                        title="Set as current story"
+                    >
+                        <Play className="w-4 h-4" />
+                    </Button>
+                )}
                 {onEdit && (
                     <Dialog open={isEditing} onOpenChange={setIsEditing}>
                         <DialogTrigger asChild>
@@ -264,6 +277,14 @@ export function StoryQueueManager({
         }
     };
 
+    const handleSetCurrent = async (storyId: string) => {
+        const result = await setCurrentStory(roomCode, storyId);
+        if (!result.success) {
+            alert(result.error || "Failed to set current story");
+        }
+        // Note: The UI will update via realtime subscription
+    };
+
     // Filter stories based on the toggle
     const filteredStories = showOnlyUnestimated
         ? stories.filter((s) => s.finalEstimate === null || s.finalEstimate === undefined)
@@ -308,6 +329,7 @@ export function StoryQueueManager({
                                         story={story}
                                         onDelete={handleDelete}
                                         onEdit={handleEdit}
+                                        onSetCurrent={handleSetCurrent}
                                         isCurrent={story.id === currentStoryId}
                                     />
                                 ))}
