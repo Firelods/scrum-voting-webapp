@@ -264,6 +264,10 @@ async function testGetIssue() {
   elements.testResultContent.textContent = 'Chargement...';
 
   try {
+    // Récupérer la config pour avoir le bon champ SP
+    const config = await sendMessage({ action: 'getConfig' });
+    const spField = config?.storyPointsField || 'customfield_10002';
+
     const result = await sendMessage({ action: 'getIssue', issueKey });
 
     if (result.error) {
@@ -275,7 +279,8 @@ async function testGetIssue() {
         summary: result.fields?.summary,
         status: result.fields?.status?.name,
         type: result.fields?.issuetype?.name,
-        storyPoints: result.fields?.customfield_10002 || result.fields?.customfield_10004,
+        storyPoints: result.fields?.[spField],
+        storyPointsField: spField,
       }, null, 2);
     }
   } catch (error) {
