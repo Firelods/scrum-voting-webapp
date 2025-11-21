@@ -14,7 +14,10 @@
   "host_permissions": [
     "https://jira.example.com/*",
     "http://localhost:*/*",
-    "https://localhost:*/*"
+    "https://localhost:*/*",
+    "http://127.0.0.1:*/*",
+    "https://127.0.0.1:*/*",
+    "https://*.vercel.app/*"
   ],
 
   "background": {
@@ -43,7 +46,10 @@
     {
       "matches": [
         "http://localhost:*/*",
-        "https://localhost:*/*"
+        "https://localhost:*/*",
+        "http://127.0.0.1:*/*",
+        "https://127.0.0.1:*/*",
+        "https://*.vercel.app/*"
       ],
       "js": ["content/content.js"],
       "run_at": "document_end"
@@ -60,7 +66,10 @@
   "externally_connectable": {
     "matches": [
       "http://localhost:*/*",
-      "https://localhost:*/*"
+      "https://localhost:*/*",
+      "http://127.0.0.1:*/*",
+      "https://127.0.0.1:*/*",
+      "https://*.vercel.app/*"
     ]
   },
 

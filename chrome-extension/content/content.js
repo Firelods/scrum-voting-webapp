@@ -175,35 +175,52 @@ window.addEventListener('message', async (event) => {
  * Signale que l'extension est installée
  */
 function signalExtensionInstalled() {
+  console.log('[Jira Bridge] Signaling extension installed...');
+  console.log('[Jira Bridge] document.body exists:', !!document.body);
+  console.log('[Jira Bridge] Current URL:', window.location.href);
+
+  if (!document.body) {
+    console.log('[Jira Bridge] No body yet, retrying in 100ms...');
+    setTimeout(signalExtensionInstalled, 100);
+    return;
+  }
+
   // Ajouter un attribut au body pour que la page puisse détecter l'extension
   document.body.setAttribute('data-jira-bridge-installed', 'true');
+  console.log('[Jira Bridge] Attribute set on body');
+
+  // Aussi sur documentElement (html) au cas où
+  document.documentElement.setAttribute('data-jira-bridge-installed', 'true');
 
   // Envoyer un événement custom
   window.dispatchEvent(new CustomEvent('jira-bridge-ready', {
-    detail: { version: '1.0.0' }
+    detail: { version: '1.1.0' }
   }));
 
   // Envoyer aussi un message
   window.postMessage({
     type: 'SCRUM_VOTE_JIRA_READY',
-    version: '1.0.0',
+    version: '1.1.0',
   }, '*');
 
   console.log('[Jira Bridge] Extension ready and signaled to page');
 }
 
 // Signaler l'installation au chargement
+console.log('[Jira Bridge] Content script starting, readyState:', document.readyState);
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', signalExtensionInstalled);
 } else {
   signalExtensionInstalled();
 }
 
-// Re-signaler périodiquement (au cas où la page se recharge partiellement)
+// Re-signaler périodiquement (au cas où la page se recharge partiellement avec Next.js)
 setInterval(() => {
-  if (!document.body.hasAttribute('data-jira-bridge-installed')) {
+  if (document.body && !document.body.hasAttribute('data-jira-bridge-installed')) {
+    console.log('[Jira Bridge] Re-signaling (attribute was removed)');
     signalExtensionInstalled();
   }
-}, 2000);
+}, 1000);
 
-console.log('[Jira Bridge] Content script loaded');
+console.log('[Jira Bridge] Content script loaded on:', window.location.href);

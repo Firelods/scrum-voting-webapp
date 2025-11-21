@@ -67,7 +67,10 @@ const pendingRequests = new Map<
  */
 export function isExtensionInstalled(): boolean {
   if (typeof window === 'undefined') return false;
-  return document.body?.hasAttribute('data-jira-bridge-installed') ?? false;
+  // Vérifier sur body ET html (documentElement)
+  const onBody = document.body?.hasAttribute('data-jira-bridge-installed') ?? false;
+  const onHtml = document.documentElement?.hasAttribute('data-jira-bridge-installed') ?? false;
+  return onBody || onHtml;
 }
 
 /**
