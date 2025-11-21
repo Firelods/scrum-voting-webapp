@@ -1,6 +1,6 @@
 # Scrum Vote - Jira Bridge
 
-Extension Chrome pour connecter l'application Scrum Vote avec Jira, en contournant les restrictions CORS.
+Extension Chrome pour connecter l'application Scrum Vote avec Jira, en contournant les restrictions CORS et les problèmes de certificat SSL.
 
 ## Installation
 
@@ -16,63 +16,87 @@ Extension Chrome pour connecter l'application Scrum Vote avec Jira, en contourna
 
 1. Cliquez sur l'icône de l'extension dans la barre d'outils Chrome
 2. Entrez l'URL de votre Jira : `https://jira.urssaf.recouv`
-3. Sélectionnez le champ Story Points approprié
-4. Cliquez sur **Sauvegarder**
+3. Cliquez sur **Ouvrir Jira dans un nouvel onglet** (ou ouvrez-le manuellement)
+4. Connectez-vous à Jira si nécessaire
+5. Revenez au popup et cliquez sur **Rafraîchir connexion**
+6. Sélectionnez le champ Story Points approprié
+7. Cliquez sur **Sauvegarder**
 
 ### Prérequis
 
-- Être connecté à Jira dans Chrome (session active)
-- L'extension utilise vos cookies de session pour l'authentification
-
-## Fonctionnalités
-
-- ✅ Récupération d'issues Jira
-- ✅ Lecture des Story Points
-- ✅ Mise à jour des Story Points
-- ✅ Recherche JQL
-- ✅ Extraction automatique des clés d'issues
+- **Un onglet Jira doit rester ouvert** pendant l'utilisation
+- L'extension utilise cet onglet pour faire les requêtes API (contourne les problèmes de certificat SSL)
 
 ## Architecture
 
+L'extension utilise une architecture en 3 parties :
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Scrum Vote    │────>│ Background Script│────>│  Onglet Jira    │
+│   (localhost)   │     │  (coordinateur)  │     │ (content script)│
+│                 │<────│                  │<────│                 │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+    content.js              background.js         jira-injected.js
+```
+
+**Pourquoi cette architecture ?**
+- Le service worker ne peut pas contourner les erreurs de certificat SSL
+- Le content script injecté dans la page Jira peut faire des requêtes car l'utilisateur a déjà accepté le certificat
+- Cela permet de fonctionner avec des Jira internes utilisant des certificats auto-signés
+
+## Structure des fichiers
+
 ```
 chrome-extension/
-├── manifest.json       # Configuration Manifest V3
-├── background.js       # Service Worker (API Jira)
+├── manifest.json           # Configuration Manifest V3
+├── background.js           # Service Worker (coordinateur)
 ├── content/
-│   └── content.js     # Script injecté dans la webapp
+│   ├── content.js         # Injecté dans Scrum Vote (localhost)
+│   └── jira-injected.js   # Injecté dans les pages Jira
 ├── popup/
-│   ├── popup.html     # Interface de configuration
-│   ├── popup.css      # Styles
-│   └── popup.js       # Logique du popup
-└── icons/             # Icônes de l'extension
+│   ├── popup.html         # Interface de configuration
+│   ├── popup.css          # Styles
+│   └── popup.js           # Logique du popup
+└── icons/                 # Icônes de l'extension
 ```
 
-## Communication avec la Webapp
+## Fonctionnalités
 
-L'extension communique avec Scrum Vote via `window.postMessage`.
+- Récupération d'issues Jira
+- Lecture des Story Points
+- Mise à jour des Story Points
+- Recherche JQL
+- Extraction automatique des clés d'issues
+- Détection automatique des champs Story Points
 
-### Depuis la webapp (TypeScript)
+## Utilisation depuis la Webapp
 
 ```typescript
 import { JiraBridge, isExtensionInstalled, waitForExtension } from '@/lib/jira-bridge';
 
-// Vérifier si l'extension est installée
+// Attendre que l'extension soit prête
+await waitForExtension();
+
 if (isExtensionInstalled()) {
-  // Récupérer une issue
-  const issue = await JiraBridge.getIssue('PROJ-1234');
-
-  // Mettre à jour les Story Points
-  await JiraBridge.updateStoryPoints('PROJ-1234', 5);
-
   // Vérifier la connexion
   const status = await JiraBridge.checkConnection();
   if (status.connected) {
     console.log(`Connecté en tant que ${status.user.displayName}`);
   }
+
+  // Récupérer une issue
+  const issue = await JiraBridge.getIssue('ACTRLD-6484');
+
+  // Mettre à jour les Story Points
+  await JiraBridge.updateStoryPoints('ACTRLD-6484', 5);
+
+  // Rechercher des issues
+  const issues = await JiraBridge.searchIssues('project = ACTRLD AND sprint in openSprints()');
 }
 ```
 
-### Messages supportés
+## Messages supportés
 
 | Action | Payload | Description |
 |--------|---------|-------------|
@@ -83,6 +107,8 @@ if (isExtensionInstalled()) {
 | `updateStoryPoints` | `{ issueKey, storyPoints }` | Met à jour les SP |
 | `getStoryPoints` | `{ issueKey }` | Récupère les SP |
 | `searchIssues` | `{ jql, maxResults }` | Recherche JQL |
+| `getFields` | - | Liste les champs Jira |
+| `getProjects` | - | Liste les projets |
 | `extractIssueKey` | `{ input }` | Extrait la clé d'issue |
 | `ping` | - | Vérifie que l'extension répond |
 
@@ -96,32 +122,21 @@ if (isExtensionInstalled()) {
 
 ### Debug
 
-- **Service Worker** : Cliquez sur "Inspecter les vues : service worker"
+- **Service Worker** : Cliquez sur "Inspecter les vues : service worker" dans chrome://extensions
 - **Popup** : Clic droit sur le popup > Inspecter
-- **Content Script** : Console de la page web (filtrer par `[Jira Bridge]`)
-
-## API Jira
-
-L'extension utilise l'API REST Jira v2 :
-- `GET /rest/api/2/myself` - Info utilisateur
-- `GET /rest/api/2/issue/{key}` - Récupérer une issue
-- `PUT /rest/api/2/issue/{key}` - Mettre à jour une issue
-- `GET /rest/api/2/search` - Recherche JQL
-- `GET /rest/api/2/field` - Liste des champs
-
-## Permissions
-
-L'extension requiert :
-- `storage` : Sauvegarde de la configuration
-- `cookies` : Accès aux cookies Jira
-- `host_permissions` : Accès à `https://jira.urssaf.recouv/*`
+- **Content Script Jira** : Console de l'onglet Jira (filtrer par `[Jira Bridge]`)
+- **Content Script Webapp** : Console de localhost (filtrer par `[Jira Bridge]`)
 
 ## Troubleshooting
 
+### "Aucun onglet Jira ouvert"
+- Ouvrez une page Jira (n'importe laquelle) dans un onglet
+- Attendez que la page soit chargée
+- Cliquez sur "Rafraîchir connexion" dans le popup
+
 ### "Non connecté à Jira"
-- Vérifiez que vous êtes bien connecté à Jira dans un onglet
-- Vérifiez que l'URL Jira est correcte
-- Rechargez l'extension
+- Vérifiez que vous êtes connecté à Jira dans l'onglet ouvert
+- Vérifiez que l'URL Jira configurée est correcte
 
 ### "Story Points non mis à jour"
 - Vérifiez que le champ Story Points configuré est correct
@@ -131,3 +146,20 @@ L'extension requiert :
 - Vérifiez que la webapp tourne sur localhost
 - Rechargez la page de la webapp
 - Vérifiez la console pour les erreurs
+
+## API Jira utilisées
+
+- `GET /rest/api/2/myself` - Info utilisateur connecté
+- `GET /rest/api/2/issue/{key}` - Récupérer une issue
+- `PUT /rest/api/2/issue/{key}` - Mettre à jour une issue
+- `GET /rest/api/2/search` - Recherche JQL
+- `GET /rest/api/2/field` - Liste des champs
+- `GET /rest/api/2/project` - Liste des projets
+
+## Permissions
+
+L'extension requiert :
+- `storage` : Sauvegarde de la configuration
+- `tabs` : Trouver et communiquer avec les onglets Jira
+- `scripting` : Injecter des scripts si nécessaire
+- `host_permissions` : Accès à `https://jira.urssaf.recouv/*` et `localhost`
