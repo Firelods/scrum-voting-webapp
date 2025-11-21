@@ -8,6 +8,7 @@ import {
   extractJiraKeyFromText,
   type JiraConnectionStatus,
 } from "@/lib/jira-bridge";
+import { debugLog, debugError } from "@/lib/debug";
 
 export interface UseJiraBridgeReturn {
   isInstalled: boolean;
@@ -41,27 +42,27 @@ export function useJiraBridge(): UseJiraBridgeReturn {
     setIsLoading(true);
     setError(null);
 
-    console.log("[JiraBridge] Checking connection...");
-    console.log("[JiraBridge] data-jira-bridge-installed:", document.body?.hasAttribute('data-jira-bridge-installed'));
+    debugLog("Checking connection...");
+    debugLog("data-jira-bridge-installed:", document.body?.hasAttribute('data-jira-bridge-installed'));
 
     try {
       // Attendre que l'extension soit prête
       const installed = await waitForExtension(2000);
       setIsInstalled(installed);
-      console.log("[JiraBridge] Extension installed:", installed);
+      debugLog("Extension installed:", installed);
 
       if (!installed) {
         setIsConnected(false);
         setUser(null);
         setError("Extension Jira Bridge non installée");
-        console.log("[JiraBridge] Extension not installed");
+        debugLog("Extension not installed");
         return;
       }
 
       // Vérifier la connexion
-      console.log("[JiraBridge] Checking Jira connection...");
+      debugLog("Checking Jira connection...");
       const status = await JiraBridge.checkConnection();
-      console.log("[JiraBridge] Connection status:", status);
+      debugLog("Connection status:", status);
       setIsConnected(status.connected);
       setUser(status.user || null);
 
@@ -69,7 +70,7 @@ export function useJiraBridge(): UseJiraBridgeReturn {
         setError(status.error || "Non connecté à Jira");
       }
     } catch (err) {
-      console.error("[JiraBridge] Error:", err);
+      debugError("Error:", err);
       setIsConnected(false);
       setUser(null);
       setError(err instanceof Error ? err.message : "Erreur inconnue");

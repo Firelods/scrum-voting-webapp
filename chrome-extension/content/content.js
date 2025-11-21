@@ -8,6 +8,26 @@
 
 const EXTENSION_ID = 'scrum-vote-jira-bridge';
 
+// Debug mode - check localStorage
+let debugMode = false;
+try {
+  debugMode = localStorage.getItem('jira-bridge-debug') === 'true';
+} catch (e) {
+  // localStorage might not be available
+}
+
+function debugLog(...args) {
+  if (debugMode) {
+    console.log('[Jira Bridge]', ...args);
+  }
+}
+
+function debugError(...args) {
+  if (debugMode) {
+    console.error('[Jira Bridge]', ...args);
+  }
+}
+
 /**
  * Envoie un message au background script
  */
@@ -105,7 +125,7 @@ window.addEventListener('message', async (event) => {
   // Ne traiter que les messages destinés à l'extension
   if (type !== 'SCRUM_VOTE_JIRA_REQUEST') return;
 
-  console.log('[Jira Bridge] Received request:', action, payload);
+  debugLog('Received request:', action, payload);
 
   try {
     let result;
@@ -160,7 +180,7 @@ window.addEventListener('message', async (event) => {
     }, '*');
 
   } catch (error) {
-    console.error('[Jira Bridge] Error:', error);
+    debugError('Error:', error);
 
     window.postMessage({
       type: 'SCRUM_VOTE_JIRA_RESPONSE',
@@ -175,19 +195,19 @@ window.addEventListener('message', async (event) => {
  * Signale que l'extension est installée
  */
 function signalExtensionInstalled() {
-  console.log('[Jira Bridge] Signaling extension installed...');
-  console.log('[Jira Bridge] document.body exists:', !!document.body);
-  console.log('[Jira Bridge] Current URL:', window.location.href);
+  debugLog('Signaling extension installed...');
+  debugLog('document.body exists:', !!document.body);
+  debugLog('Current URL:', window.location.href);
 
   if (!document.body) {
-    console.log('[Jira Bridge] No body yet, retrying in 100ms...');
+    debugLog('No body yet, retrying in 100ms...');
     setTimeout(signalExtensionInstalled, 100);
     return;
   }
 
   // Ajouter un attribut au body pour que la page puisse détecter l'extension
   document.body.setAttribute('data-jira-bridge-installed', 'true');
-  console.log('[Jira Bridge] Attribute set on body');
+  debugLog('Attribute set on body');
 
   // Aussi sur documentElement (html) au cas où
   document.documentElement.setAttribute('data-jira-bridge-installed', 'true');
@@ -203,11 +223,11 @@ function signalExtensionInstalled() {
     version: '1.1.0',
   }, '*');
 
-  console.log('[Jira Bridge] Extension ready and signaled to page');
+  debugLog('Extension ready and signaled to page');
 }
 
 // Signaler l'installation au chargement
-console.log('[Jira Bridge] Content script starting, readyState:', document.readyState);
+debugLog('Content script starting, readyState:', document.readyState);
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', signalExtensionInstalled);
@@ -218,9 +238,9 @@ if (document.readyState === 'loading') {
 // Re-signaler périodiquement (au cas où la page se recharge partiellement avec Next.js)
 setInterval(() => {
   if (document.body && !document.body.hasAttribute('data-jira-bridge-installed')) {
-    console.log('[Jira Bridge] Re-signaling (attribute was removed)');
+    debugLog('Re-signaling (attribute was removed)');
     signalExtensionInstalled();
   }
 }, 1000);
 
-console.log('[Jira Bridge] Content script loaded on:', window.location.href);
+debugLog('Content script loaded on:', window.location.href);

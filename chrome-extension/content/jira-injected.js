@@ -7,7 +7,27 @@
  * (l'utilisateur a déjà accepté le certificat pour accéder à Jira).
  */
 
-console.log('[Jira Bridge] Content script loaded on Jira page');
+// Debug mode - check localStorage
+let debugMode = false;
+try {
+  debugMode = localStorage.getItem('jira-bridge-debug') === 'true';
+} catch (e) {
+  // localStorage might not be available
+}
+
+function debugLog(...args) {
+  if (debugMode) {
+    console.log('[Jira Bridge]', ...args);
+  }
+}
+
+function debugError(...args) {
+  if (debugMode) {
+    console.error('[Jira Bridge]', ...args);
+  }
+}
+
+debugLog('Content script loaded on Jira page');
 
 /**
  * Fait une requête vers l'API Jira
@@ -76,7 +96,7 @@ async function jiraFetch(endpoint, options = {}) {
 
     return { success: true, status: response.status };
   } catch (error) {
-    console.error('[Jira Bridge] Fetch error:', error);
+    debugError('Fetch error:', error);
     throw error;
   }
 }
@@ -170,7 +190,7 @@ const JiraActions = {
  * Écoute les messages du background script
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('[Jira Bridge] Received message from background:', request);
+  debugLog('Received message from background:', request);
 
   const handleRequest = async () => {
     try {
@@ -219,7 +239,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           throw new Error(`Unknown action: ${action}`);
       }
     } catch (error) {
-      console.error('[Jira Bridge] Error handling request:', error);
+      debugError('Error handling request:', error);
       return { error: error.message };
     }
   };
@@ -234,4 +254,4 @@ chrome.runtime.sendMessage({
   url: window.location.origin
 });
 
-console.log('[Jira Bridge] Content script ready on:', window.location.origin);
+debugLog('Content script ready on:', window.location.origin);

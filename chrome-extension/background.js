@@ -10,6 +10,26 @@
  * injecté dans la page Jira pour éviter les problèmes de certificat.
  */
 
+// Debug mode - stored in chrome.storage
+let debugMode = false;
+
+// Load debug mode on startup
+chrome.storage.sync.get(['jiraBridgeDebug'], (result) => {
+  debugMode = result.jiraBridgeDebug === true;
+});
+
+function debugLog(...args) {
+  if (debugMode) {
+    console.log('[Background]', ...args);
+  }
+}
+
+function debugError(...args) {
+  if (debugMode) {
+    console.error('[Background]', ...args);
+  }
+}
+
 // Configuration par défaut
 const DEFAULT_CONFIG = {
   jiraBaseUrl: 'https://jira.example.com',
@@ -143,13 +163,13 @@ function extractIssueKey(input) {
 
 // Écoute les messages
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('[Background] Received message:', request.action);
+  debugLog('Received message:', request.action);
 
   // Si c'est un message du content script Jira signalant qu'il est prêt
   if (request.action === 'jira_contentScriptReady') {
     if (sender.tab) {
       jiraTabsReady.add(sender.tab.id);
-      console.log('[Background] Jira tab ready:', sender.tab.id, request.url);
+      debugLog('Jira tab ready:', sender.tab.id, request.url);
     }
     return;
   }
@@ -227,7 +247,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           throw new Error(`Unknown action: ${request.action}`);
       }
     } catch (error) {
-      console.error('[Background] Error:', error);
+      debugError('Error:', error);
       return { error: error.message };
     }
   };
@@ -241,4 +261,4 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   jiraTabsReady.delete(tabId);
 });
 
-console.log('[Background] Scrum Vote - Jira Bridge service worker started');
+debugLog('Scrum Vote - Jira Bridge service worker started');
