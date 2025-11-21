@@ -42,10 +42,38 @@ async function jiraFetch(endpoint, options = {}) {
       throw new Error(`Jira API Error (${response.status}): ${errorText}`);
     }
 
+    // 204 No Content - pas de body à parser
+    if (response.status === 204) {
+      return { success: true, status: 204 };
+    }
+
+    // Vérifier s'il y a du contenu à parser
+    const contentLength = response.headers.get('content-length');
     const contentType = response.headers.get('content-type');
+
+    // Si pas de contenu ou content-length = 0, retourner success
+    if (contentLength === '0' || contentLength === null) {
+      // Essayer de lire le texte pour voir s'il y a quelque chose
+      const text = await response.text();
+      if (!text || text.trim() === '') {
+        return { success: true, status: response.status };
+      }
+      // S'il y a du texte et que c'est du JSON, le parser
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          return JSON.parse(text);
+        } catch {
+          return { success: true, status: response.status, text };
+        }
+      }
+      return { success: true, status: response.status, text };
+    }
+
+    // Parser le JSON si c'est le bon content-type
     if (contentType && contentType.includes('application/json')) {
       return await response.json();
     }
+
     return { success: true, status: response.status };
   } catch (error) {
     console.error('[Jira Bridge] Fetch error:', error);
