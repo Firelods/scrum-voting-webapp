@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scrum Vote - Jira Bridge</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Scrum Vote</h1>
+      <span class="subtitle">Jira Bridge</span>
+    </header>
+
+    <!-- Status de connexion -->
+    <section id="status-section" class="section">
+      <div id="connection-status" class="status loading">
+        <span class="status-icon">⏳</span>
+        <span class="status-text">Vérification de la connexion...</span>
+      </div>
+      <div id="user-info" class="user-info hidden">
+        <img id="user-avatar" src="" alt="Avatar" class="avatar">
+        <div class="user-details">
+          <span id="user-name" class="user-name"></span>
+          <span id="user-email" class="user-email"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Configuration -->
+    <section id="config-section" class="section">
+      <h2>Configuration</h2>
+
+      <div class="form-group">
+        <label for="jira-url">URL Jira</label>
+        <input type="url" id="jira-url" placeholder="https://jira.example.com">
+      </div>
+
+      <div class="form-group">
+        <label for="story-points-field">Champ Story Points</label>
+        <select id="story-points-field">
+          <option value="">Chargement...</option>
+        </select>
+        <small class="help-text">Sélectionnez le champ utilisé pour les Story Points</small>
+      </div>
+
+      <button id="save-config" class="btn btn-primary">
+        Sauvegarder
+      </button>
+    </section>
+
+    <!-- Test rapide -->
+    <section id="test-section" class="section">
+      <h2>Test rapide</h2>
+
+      <div class="form-group">
+        <label for="test-issue-key">Clé d'issue</label>
+        <input type="text" id="test-issue-key" placeholder="PROJ-1234">
+      </div>
+
+      <div class="button-group">
+        <button id="test-get-issue" class="btn btn-secondary">
+          Récupérer
+        </button>
+        <button id="test-get-sp" class="btn btn-secondary">
+          Story Points
+        </button>
+      </div>
+
+      <div id="test-result" class="test-result hidden">
+        <pre id="test-result-content"></pre>
+      </div>
+    </section>
+
+    <!-- Instructions -->
+    <section id="help-section" class="section collapsible">
+      <h2 class="collapsible-header">
+        Aide
+        <span class="collapse-icon">▼</span>
+      </h2>
+      <div class="collapsible-content">
+        <ol class="help-list">
+          <li>Configurez l'URL Jira ci-dessus</li>
+          <li>Ouvrez Jira dans un onglet (ou cliquez sur le bouton)</li>
+          <li>Connectez-vous à Jira si nécessaire</li>
+          <li>Revenez ici et cliquez sur "Rafraîchir connexion"</li>
+          <li>L'extension communiquera avec Scrum Vote automatiquement</li>
+        </ol>
+        <p class="help-note">
+          <strong>Important:</strong> Un onglet Jira doit rester ouvert pour que l'extension fonctionne.
+          Les requêtes passent par cet onglet pour éviter les problèmes de certificat SSL.
+        </p>
+      </div>
+    </section>
+
+    <footer>
+      <span class="version">v1.1.0</span>
+      <a href="#" id="refresh-connection" class="refresh-link">Rafraîchir connexion</a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
     DndContext,
     closestCenter,
@@ -30,8 +30,16 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-import { GripVertical, Trash2, ExternalLink, Edit, Filter, Play } from "lucide-react";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { GripVertical, Trash2, ExternalLink, Edit, Filter, Play, Upload, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { reorderStories, deleteStory, updateStory, setCurrentStory } from "@/app/actions/room-actions";
+import { useJiraBridge } from "@/lib/hooks/use-jira-bridge";
+import { extractJiraKeyFromText } from "@/lib/jira-bridge";
 
 interface Story {
     id: string;
@@ -47,22 +55,45 @@ interface StoryQueueManagerProps {
     currentStoryId?: string | null;
 }
 
+// État d'upload pour chaque story
+type UploadStatus = "idle" | "uploading" | "success" | "error";
+
 function SortableStoryItem({
     story,
     onDelete,
     onEdit,
     onSetCurrent,
+    onUpload,
     isCurrent,
+    uploadStatus,
+    isJiraConnected,
+    jiraStoryPoints,
 }: {
     story: Story;
     onDelete?: (id: string) => void;
     onEdit?: (id: string, title: string, jiraLink?: string) => void;
     onSetCurrent?: (id: string) => void;
+    onUpload?: (story: Story) => void;
     isCurrent?: boolean;
+    uploadStatus?: UploadStatus;
+    isJiraConnected?: boolean;
+    jiraStoryPoints?: number | null;
 }) {
     const [isEditing, setIsEditing] = useState(false);
     const [editTitle, setEditTitle] = useState(story.title);
     const [editJiraLink, setEditJiraLink] = useState(story.jiraLink || "");
+
+    // Vérifie si les SP sont synchronisés
+    const isSynced = jiraStoryPoints !== null &&
+        jiraStoryPoints !== undefined &&
+        story.finalEstimate === jiraStoryPoints;
+
+    // Peut uploader si: a un lien Jira, a une estimation, Jira connecté, et pas déjà synced
+    const canUpload = isJiraConnected &&
+        story.jiraLink &&
+        story.finalEstimate !== null &&
+        story.finalEstimate !== undefined &&
+        extractJiraKeyFromText(story.jiraLink || story.title);
 
     const handleEdit = () => {
         if (onEdit) {
@@ -114,6 +145,20 @@ function SortableStoryItem({
                             {story.finalEstimate} pts
                         </Badge>
                     )}
+                    {/* Afficher les SP Jira si différents ou pour info */}
+                    {isJiraConnected && jiraStoryPoints !== null && jiraStoryPoints !== undefined && (
+                        <Badge
+                            variant="outline"
+                            className={`flex-shrink-0 ${
+                                isSynced
+                                    ? "border-green-500 text-green-600 dark:text-green-400"
+                                    : "border-orange-500 text-orange-600 dark:text-orange-400"
+                            }`}
+                        >
+                            Jira: {jiraStoryPoints} pts
+                            {isSynced && " ✓"}
+                        </Badge>
+                    )}
                     {story.jiraLink && (
                         <a
                             href={story.jiraLink}
@@ -131,6 +176,51 @@ function SortableStoryItem({
                 </h3>
             </div>
             <div className="flex items-center gap-1">
+                {/* Upload to Jira button */}
+                {onUpload && canUpload && (
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => onUpload(story)}
+                                    disabled={uploadStatus === "uploading" || isSynced}
+                                    className={
+                                        isSynced
+                                            ? "text-green-600 cursor-default opacity-60"
+                                            : uploadStatus === "success"
+                                            ? "text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+                                            : uploadStatus === "error"
+                                            ? "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                                            : "text-purple-600 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950"
+                                    }
+                                >
+                                    {uploadStatus === "uploading" ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : isSynced || uploadStatus === "success" ? (
+                                        <CheckCircle className="w-4 h-4" />
+                                    ) : uploadStatus === "error" ? (
+                                        <XCircle className="w-4 h-4" />
+                                    ) : (
+                                        <Upload className="w-4 h-4" />
+                                    )}
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                {isSynced
+                                    ? "Déjà synchronisé avec Jira"
+                                    : uploadStatus === "success"
+                                    ? "Uploadé sur Jira!"
+                                    : uploadStatus === "error"
+                                    ? "Erreur lors de l'upload"
+                                    : jiraStoryPoints !== null && jiraStoryPoints !== undefined
+                                    ? `Mettre à jour ${jiraStoryPoints} → ${story.finalEstimate} pts`
+                                    : `Upload ${story.finalEstimate} pts sur Jira`}
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                )}
                 {onSetCurrent && !isCurrent && (
                     <Button
                         variant="ghost"
@@ -214,11 +304,48 @@ export function StoryQueueManager({
 }: StoryQueueManagerProps) {
     const [stories, setStories] = useState(initialStories);
     const [showOnlyUnestimated, setShowOnlyUnestimated] = useState(false);
+    const [uploadStatuses, setUploadStatuses] = useState<Record<string, UploadStatus>>({});
+    const [isUploadingAll, setIsUploadingAll] = useState(false);
+    const [jiraStoryPoints, setJiraStoryPoints] = useState<Record<string, number | null>>({});
+    const [isLoadingJiraSP, setIsLoadingJiraSP] = useState(false);
+
+    // Hook Jira Bridge
+    const { isConnected: isJiraConnected, uploadStoryPoints, getStoryPoints } = useJiraBridge();
 
     // Update stories when initialStories changes
     useEffect(() => {
         setStories(initialStories);
     }, [initialStories]);
+
+    // Récupérer les SP Jira quand connecté
+    const fetchJiraStoryPoints = useCallback(async () => {
+        if (!isJiraConnected) return;
+
+        const storiesWithJira = stories.filter(
+            (s) => s.jiraLink && extractJiraKeyFromText(s.jiraLink || s.title)
+        );
+
+        if (storiesWithJira.length === 0) return;
+
+        setIsLoadingJiraSP(true);
+        const newJiraSP: Record<string, number | null> = {};
+
+        for (const story of storiesWithJira) {
+            const jiraKey = extractJiraKeyFromText(story.jiraLink || story.title);
+            if (jiraKey) {
+                const result = await getStoryPoints(jiraKey);
+                newJiraSP[story.id] = result.storyPoints;
+            }
+        }
+
+        setJiraStoryPoints(newJiraSP);
+        setIsLoadingJiraSP(false);
+    }, [isJiraConnected, stories, getStoryPoints]);
+
+    // Charger les SP Jira quand la connexion change ou les stories changent
+    useEffect(() => {
+        fetchJiraStoryPoints();
+    }, [fetchJiraStoryPoints]);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -226,6 +353,81 @@ export function StoryQueueManager({
             coordinateGetter: sortableKeyboardCoordinates,
         })
     );
+
+    // Upload une story vers Jira
+    const handleUpload = async (story: Story) => {
+        const jiraKey = extractJiraKeyFromText(story.jiraLink || story.title);
+        if (!jiraKey || story.finalEstimate === null || story.finalEstimate === undefined) {
+            return;
+        }
+
+        setUploadStatuses((prev) => ({ ...prev, [story.id]: "uploading" }));
+
+        const result = await uploadStoryPoints(jiraKey, story.finalEstimate);
+
+        setUploadStatuses((prev) => ({
+            ...prev,
+            [story.id]: result.success ? "success" : "error",
+        }));
+
+        // Si succès, mettre à jour les SP Jira localement
+        if (result.success) {
+            setJiraStoryPoints((prev) => ({
+                ...prev,
+                [story.id]: story.finalEstimate!,
+            }));
+
+            // Reset status après 3 secondes pour success
+            setTimeout(() => {
+                setUploadStatuses((prev) => ({ ...prev, [story.id]: "idle" }));
+            }, 3000);
+        }
+    };
+
+    // Upload toutes les stories estimées vers Jira (non synced)
+    const handleUploadAll = async () => {
+        const uploadableStories = stories.filter(
+            (s) =>
+                s.finalEstimate !== null &&
+                s.finalEstimate !== undefined &&
+                extractJiraKeyFromText(s.jiraLink || s.title) &&
+                jiraStoryPoints[s.id] !== s.finalEstimate // Pas déjà synced
+        );
+
+        if (uploadableStories.length === 0) {
+            alert("Aucune story à uploader");
+            return;
+        }
+
+        setIsUploadingAll(true);
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const story of uploadableStories) {
+            await handleUpload(story);
+            const status = uploadStatuses[story.id];
+            if (status === "success") successCount++;
+            else if (status === "error") errorCount++;
+        }
+
+        setIsUploadingAll(false);
+
+        // Afficher un résumé
+        if (errorCount === 0) {
+            alert(`${successCount} story points uploadés sur Jira avec succès!`);
+        } else {
+            alert(`Upload terminé: ${successCount} succès, ${errorCount} erreurs`);
+        }
+    };
+
+    // Compter les stories uploadables (non synchronisées)
+    const uploadableCount = stories.filter(
+        (s) =>
+            s.finalEstimate !== null &&
+            s.finalEstimate !== undefined &&
+            extractJiraKeyFromText(s.jiraLink || s.title) &&
+            jiraStoryPoints[s.id] !== s.finalEstimate // Pas déjà synced
+    ).length;
 
     const handleDragEnd = async (event: DragEndEvent) => {
         const { active, over } = event;
@@ -293,16 +495,44 @@ export function StoryQueueManager({
     return (
         <Card>
             <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                     <CardTitle>Story Queue ({filteredStories.length}/{stories.length})</CardTitle>
-                    <Button
-                        variant={showOnlyUnestimated ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setShowOnlyUnestimated(!showOnlyUnestimated)}
-                    >
-                        <Filter className="w-4 h-4 mr-2" />
-                        {showOnlyUnestimated ? "Show All" : "Only Unestimated"}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        {/* Upload All button - visible si Jira est connecté et qu'il y a des stories uploadables */}
+                        {isJiraConnected && uploadableCount > 0 && (
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleUploadAll}
+                                            disabled={isUploadingAll}
+                                            className="text-purple-600 border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950"
+                                        >
+                                            {isUploadingAll ? (
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            ) : (
+                                                <Upload className="w-4 h-4 mr-2" />
+                                            )}
+                                            Upload All ({uploadableCount})
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        Upload tous les story points estimés vers Jira
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        )}
+                        <Button
+                            variant={showOnlyUnestimated ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setShowOnlyUnestimated(!showOnlyUnestimated)}
+                        >
+                            <Filter className="w-4 h-4 mr-2" />
+                            {showOnlyUnestimated ? "Show All" : "Only Unestimated"}
+                        </Button>
+                    </div>
                 </div>
             </CardHeader>
             <CardContent>
@@ -330,7 +560,11 @@ export function StoryQueueManager({
                                         onDelete={handleDelete}
                                         onEdit={handleEdit}
                                         onSetCurrent={handleSetCurrent}
+                                        onUpload={handleUpload}
                                         isCurrent={story.id === currentStoryId}
+                                        uploadStatus={uploadStatuses[story.id] || "idle"}
+                                        isJiraConnected={isJiraConnected}
+                                        jiraStoryPoints={jiraStoryPoints[story.id]}
                                     />
                                 ))}
                             </div>

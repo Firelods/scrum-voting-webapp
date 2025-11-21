@@ -1,0 +1,200 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import {
+  JiraBridge,
+  isExtensionInstalled,
+  waitForExtension,
+  extractJiraKeyFromText,
+  type JiraConnectionStatus,
+} from "@/lib/jira-bridge";
+import { debugLog, debugError } from "@/lib/debug";
+
+export interface UseJiraBridgeReturn {
+  isInstalled: boolean;
+  isConnected: boolean;
+  isLoading: boolean;
+  user: JiraConnectionStatus["user"] | null;
+  error: string | null;
+  checkConnection: () => Promise<void>;
+  getStoryPoints: (jiraKeyOrUrl: string) => Promise<{ storyPoints: number | null; error?: string }>;
+  uploadStoryPoints: (
+    jiraKeyOrUrl: string,
+    storyPoints: number
+  ) => Promise<{ success: boolean; error?: string }>;
+  uploadMultipleStoryPoints: (
+    stories: Array<{ jiraKey: string; storyPoints: number }>
+  ) => Promise<{
+    success: number;
+    failed: number;
+    errors: Array<{ jiraKey: string; error: string }>;
+  }>;
+}
+
+export function useJiraBridge(): UseJiraBridgeReturn {
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<JiraConnectionStatus["user"] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const checkConnection = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    debugLog("Checking connection...");
+    debugLog("data-jira-bridge-installed:", document.body?.hasAttribute('data-jira-bridge-installed'));
+
+    try {
+      // Attendre que l'extension soit prête
+      const installed = await waitForExtension(2000);
+      setIsInstalled(installed);
+      debugLog("Extension installed:", installed);
+
+      if (!installed) {
+        setIsConnected(false);
+        setUser(null);
+        setError("Extension Jira Bridge non installée");
+        debugLog("Extension not installed");
+        return;
+      }
+
+      // Vérifier la connexion
+      debugLog("Checking Jira connection...");
+      const status = await JiraBridge.checkConnection();
+      debugLog("Connection status:", status);
+      setIsConnected(status.connected);
+      setUser(status.user || null);
+
+      if (!status.connected) {
+        setError(status.error || "Non connecté à Jira");
+      }
+    } catch (err) {
+      debugError("Error:", err);
+      setIsConnected(false);
+      setUser(null);
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Vérifier la connexion au montage
+  useEffect(() => {
+    checkConnection();
+
+    // Écouter l'événement de l'extension qui devient prête
+    const handleReady = () => {
+      checkConnection();
+    };
+
+    window.addEventListener("jira-bridge-ready", handleReady);
+    return () => {
+      window.removeEventListener("jira-bridge-ready", handleReady);
+    };
+  }, [checkConnection]);
+
+  const getStoryPoints = useCallback(
+    async (jiraKeyOrUrl: string): Promise<{ storyPoints: number | null; error?: string }> => {
+      if (!isInstalled || !isConnected) {
+        return { storyPoints: null, error: "Non connecté" };
+      }
+
+      try {
+        const jiraKey = extractJiraKeyFromText(jiraKeyOrUrl);
+        if (!jiraKey) {
+          return { storyPoints: null, error: "Clé Jira invalide" };
+        }
+
+        const result = await JiraBridge.getStoryPoints(jiraKey);
+        return { storyPoints: result.storyPoints };
+      } catch (err) {
+        return {
+          storyPoints: null,
+          error: err instanceof Error ? err.message : "Erreur inconnue",
+        };
+      }
+    },
+    [isInstalled, isConnected]
+  );
+
+  const uploadStoryPoints = useCallback(
+    async (
+      jiraKeyOrUrl: string,
+      storyPoints: number
+    ): Promise<{ success: boolean; error?: string }> => {
+      if (!isInstalled) {
+        return { success: false, error: "Extension non installée" };
+      }
+
+      if (!isConnected) {
+        return { success: false, error: "Non connecté à Jira" };
+      }
+
+      try {
+        // Extraire la clé Jira si c'est une URL ou un texte
+        const jiraKey = extractJiraKeyFromText(jiraKeyOrUrl);
+
+        if (!jiraKey) {
+          return {
+            success: false,
+            error: `Impossible d'extraire la clé Jira de: ${jiraKeyOrUrl}`,
+          };
+        }
+
+        const result = await JiraBridge.updateStoryPoints(jiraKey, storyPoints);
+        return { success: result.success };
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Erreur inconnue",
+        };
+      }
+    },
+    [isInstalled, isConnected]
+  );
+
+  const uploadMultipleStoryPoints = useCallback(
+    async (
+      stories: Array<{ jiraKey: string; storyPoints: number }>
+    ): Promise<{
+      success: number;
+      failed: number;
+      errors: Array<{ jiraKey: string; error: string }>;
+    }> => {
+      const results = {
+        success: 0,
+        failed: 0,
+        errors: [] as Array<{ jiraKey: string; error: string }>,
+      };
+
+      for (const story of stories) {
+        const result = await uploadStoryPoints(story.jiraKey, story.storyPoints);
+        if (result.success) {
+          results.success++;
+        } else {
+          results.failed++;
+          results.errors.push({
+            jiraKey: story.jiraKey,
+            error: result.error || "Unknown error",
+          });
+        }
+      }
+
+      return results;
+    },
+    [uploadStoryPoints]
+  );
+
+  return {
+    isInstalled,
+    isConnected,
+    isLoading,
+    user,
+    error,
+    checkConnection,
+    getStoryPoints,
+    uploadStoryPoints,
+    uploadMultipleStoryPoints,
+  };
+}
