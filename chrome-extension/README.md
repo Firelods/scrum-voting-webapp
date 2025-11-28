@@ -15,7 +15,7 @@ Extension Chrome pour connecter l'application Scrum Vote avec Jira, en contourna
 ### Configuration
 
 1. Cliquez sur l'icône de l'extension dans la barre d'outils Chrome
-2. Entrez l'URL de votre Jira : `https://jira.example.com`
+2. Entrez l'URL de votre Jira : `https://jira.lien`
 3. Cliquez sur **Ouvrir Jira dans un nouvel onglet** (ou ouvrez-le manuellement)
 4. Connectez-vous à Jira si nécessaire
 5. Revenez au popup et cliquez sur **Rafraîchir connexion**
@@ -89,13 +89,13 @@ if (isExtensionInstalled()) {
   }
 
   // Récupérer une issue
-  const issue = await JiraBridge.getIssue('PROJECT-6484');
+  const issue = await JiraBridge.getIssue('PROJ-6484');
 
   // Mettre à jour les Story Points
-  await JiraBridge.updateStoryPoints('PROJECT-6484', 5);
+  await JiraBridge.updateStoryPoints('PROJ-6484', 5);
 
   // Rechercher des issues
-  const issues = await JiraBridge.searchIssues('project = PROJECT AND sprint in openSprints()');
+  const issues = await JiraBridge.searchIssues('project = PROJ AND sprint in openSprints()');
 }
 ```
 
@@ -185,7 +185,7 @@ L'extension requiert :
 - `storage` : Sauvegarde de la configuration
 - `tabs` : Trouver et communiquer avec les onglets Jira
 - `scripting` : Injecter des scripts si nécessaire
-- `host_permissions` : Acces a `https://jira.example.com/*` et `localhost`
+- `host_permissions` : Acces a `https://jira.lien/*` et `localhost`
 
 ## Version
 
