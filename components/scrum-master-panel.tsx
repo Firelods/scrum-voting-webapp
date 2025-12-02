@@ -496,11 +496,12 @@ export function ScrumMasterPanel({
                                                 value={finalEstimateValue}
                                                 onChange={(e) =>
                                                     setFinalEstimateValue(
-                                                        parseInt(e.target.value) || 0
+                                                        parseFloat(e.target.value) || 0
                                                     )
                                                 }
                                                 className="mt-1"
                                                 min="0"
+                                                step="0.5"
                                             />
                                             <p className="text-xs text-muted-foreground mt-1">
                                                 Suggested: {getSuggestedEstimate()} (median of votes)
