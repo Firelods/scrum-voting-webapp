@@ -203,10 +203,11 @@ export function VoteSummary({ roomCode }: VoteSummaryProps) {
                                                         type="number"
                                                         value={editEstimate}
                                                         onChange={(e) =>
-                                                            setEditEstimate(parseInt(e.target.value) || 0)
+                                                            setEditEstimate(parseFloat(e.target.value) || 0)
                                                         }
                                                         className="mt-1"
                                                         min="0"
+                                                        step="0.5"
                                                     />
                                                     <p className="text-xs text-muted-foreground mt-1">
                                                         Current consensus: {entry.statistics.median} (median)
