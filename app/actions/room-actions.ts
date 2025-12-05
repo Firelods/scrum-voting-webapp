@@ -16,114 +16,133 @@ function generateRoomCode(): string {
 
 // Helper function to build Room object from database rows
 async function buildRoomObject(code: string): Promise<Room | null> {
-    // Fetch room data first
-    const { data: roomData, error: roomError } = await supabaseServer
-        .from("rooms")
-        .select("*")
-        .eq("code", code)
-        .single();
+    try {
+        // Fetch room data first
+        const { data: roomData, error: roomError } = await supabaseServer
+            .from("rooms")
+            .select("*")
+            .eq("code", code)
+            .single();
 
-    if (roomError || !roomData) return null;
+        if (roomError || !roomData) {
+            console.error("Error fetching room:", roomError);
+            return null;
+        }
 
-    // Parallelize all dependent queries for better performance
-    const [participantsResult, votesResult, storiesResult] = await Promise.all([
-        supabaseServer
-            .from("participants")
-            .select("name, is_scrum_master, is_voter")
-            .eq("room_code", code)
-            .order("joined_at", { ascending: true }),
-        supabaseServer
-            .from("votes")
-            .select("participant_name, vote_value")
-            .eq("room_code", code),
-        supabaseServer
-            .from("stories")
-            .select("id, title, jira_link, final_estimate, voted_at")
-            .eq("room_code", code)
-            .order("order_index", { ascending: true }),
-    ]);
+        // Parallelize all dependent queries for better performance
+        const [participantsResult, votesResult, storiesResult] = await Promise.all([
+            supabaseServer
+                .from("participants")
+                .select("name, is_scrum_master, is_voter")
+                .eq("room_code", code)
+                .order("joined_at", { ascending: true }),
+            supabaseServer
+                .from("votes")
+                .select("participant_name, vote_value")
+                .eq("room_code", code),
+            supabaseServer
+                .from("stories")
+                .select("id, title, jira_link, final_estimate, voted_at")
+                .eq("room_code", code)
+                .order("order_index", { ascending: true }),
+        ]);
 
-    if (participantsResult.error) {
-        console.error("Error fetching participants:", participantsResult.error);
+        if (participantsResult.error) {
+            console.error("Error fetching participants:", participantsResult.error);
+            return null;
+        }
+
+        if (votesResult.error) {
+            console.error("Error fetching votes:", votesResult.error);
+            return null;
+        }
+
+        if (storiesResult.error) {
+            console.error("Error fetching stories:", storiesResult.error);
+            return null;
+        }
+
+        const participants = participantsResult.data;
+        const votes = votesResult.data;
+        const stories = storiesResult.data;
+
+        // Create a map of votes by participant name
+        const voteMap = new Map(
+            (votes || []).map((v: any) => [v.participant_name, v.vote_value])
+        );
+
+        // Find current story by ID (more robust than index-based lookup)
+        const currentStory = roomData.current_story_id
+            ? (stories || []).find((s: any) => s.id === roomData.current_story_id) || null
+            : null;
+
+        return {
+            code: roomData.code,
+            currentStory: currentStory
+                ? {
+                      id: currentStory.id.toString(),
+                      title: currentStory.title,
+                      jiraLink: currentStory.jira_link || undefined,
+                      finalEstimate: currentStory.final_estimate,
+                      votedAt: currentStory.voted_at,
+                  }
+                : null,
+            storyQueue: (stories || []).map((s: any) => ({
+                id: s.id.toString(),
+                title: s.title,
+                jiraLink: s.jira_link || undefined,
+                finalEstimate: s.final_estimate,
+                votedAt: s.voted_at,
+            })),
+            participants: (participants || []).map((p: any) => ({
+                id: p.name,
+                name: p.name,
+                vote: voteMap.get(p.name) || null,
+                isScumMaster: p.is_scrum_master,
+                isOnline: true, // Always true since we removed heartbeat tracking
+                isVoter: p.is_voter !== undefined ? p.is_voter : true,
+            })),
+            votingActive: roomData.voting_state === "voting",
+            votesRevealed: roomData.votes_revealed,
+            timerSeconds: roomData.timer_duration,
+            timerStartedAt: roomData.timer_end_time
+                ? roomData.timer_end_time - roomData.timer_duration * 1000
+                : null,
+            createdAt: new Date(roomData.created_at).getTime(),
+            jiraBaseUrl: roomData.jira_base_url || null,
+        };
+    } catch (error) {
+        console.error("Unexpected error building room object:", error);
         return null;
     }
-
-    if (votesResult.error) {
-        console.error("Error fetching votes:", votesResult.error);
-        return null;
-    }
-
-    if (storiesResult.error) {
-        console.error("Error fetching stories:", storiesResult.error);
-        return null;
-    }
-
-    const participants = participantsResult.data;
-    const votes = votesResult.data;
-    const stories = storiesResult.data;
-
-    // Create a map of votes by participant name
-    const voteMap = new Map(
-        (votes || []).map((v: any) => [v.participant_name, v.vote_value])
-    );
-
-    // Find current story by ID (more robust than index-based lookup)
-    const currentStory = roomData.current_story_id
-        ? (stories || []).find((s: any) => s.id === roomData.current_story_id) || null
-        : null;
-
-    return {
-        code: roomData.code,
-        currentStory: currentStory
-            ? {
-                  id: currentStory.id.toString(),
-                  title: currentStory.title,
-                  jiraLink: currentStory.jira_link || undefined,
-                  finalEstimate: currentStory.final_estimate,
-                  votedAt: currentStory.voted_at,
-              }
-            : null,
-        storyQueue: (stories || []).map((s: any) => ({
-            id: s.id.toString(),
-            title: s.title,
-            jiraLink: s.jira_link || undefined,
-            finalEstimate: s.final_estimate,
-            votedAt: s.voted_at,
-        })),
-        participants: (participants || []).map((p: any) => ({
-            id: p.name,
-            name: p.name,
-            vote: voteMap.get(p.name) || null,
-            isScumMaster: p.is_scrum_master,
-            isOnline: true, // Always true since we removed heartbeat tracking
-            isVoter: p.is_voter !== undefined ? p.is_voter : true,
-        })),
-        votingActive: roomData.voting_state === "voting",
-        votesRevealed: roomData.votes_revealed,
-        timerSeconds: roomData.timer_duration,
-        timerStartedAt: roomData.timer_end_time
-            ? roomData.timer_end_time - roomData.timer_duration * 1000
-            : null,
-        createdAt: new Date(roomData.created_at).getTime(),
-        jiraBaseUrl: roomData.jira_base_url || null,
-    };
 }
 
 export async function createRoom() {
-    const code = generateRoomCode();
+    try {
+        const code = generateRoomCode();
 
-    const { error } = await supabaseServer.from("rooms").insert({
-        code,
-        scrum_master_name: "Scrum Master",
-    });
+        const { error } = await supabaseServer.from("rooms").insert({
+            code,
+            scrum_master_name: "Scrum Master",
+        });
 
-    if (error) {
-        console.error("Error creating room:", error);
-        return { success: false, error: "Failed to create room" };
+        if (error) {
+            console.error("Error creating room:", error);
+            return { success: false, error: "Failed to create room" };
+        }
+
+        const room = await buildRoomObject(code);
+        
+        if (!room) {
+            console.error("Room created but failed to retrieve room data");
+            return { success: false, error: "Room created but cannot be retrieved. Service may be temporarily unavailable." };
+        }
+        
+        return { success: true, room };
+    } catch (error) {
+        console.error("Unexpected error creating room:", error);
+        return { success: false, error: "Service temporarily unavailable. Please try again later." };
     }
-
-    const room = await buildRoomObject(code);
-    return { success: true, room };
 }
 
 export async function joinRoom(
@@ -131,60 +150,76 @@ export async function joinRoom(
     name: string,
     isScumMaster = false
 ) {
-    // Check if room exists
-    const { data: room, error: roomError } = await supabaseServer
-        .from("rooms")
-        .select("code")
-        .eq("code", code)
-        .single();
+    try {
+        // Check if room exists
+        const { data: room, error: roomError } = await supabaseServer
+            .from("rooms")
+            .select("code")
+            .eq("code", code)
+            .single();
 
-    if (roomError || !room) {
-        return { success: false, error: "Room not found" };
+        if (roomError || !room) {
+            return { success: false, error: "Room not found" };
+        }
+
+        // Update last activity
+        const { error: updateError } = await supabaseServer
+            .from("rooms")
+            .update({ last_activity: new Date().toISOString() })
+            .eq("code", code);
+
+        if (updateError) {
+            console.error("Error updating room activity:", updateError);
+        }
+
+        // Add participant (or update if exists)
+        const { error: participantError } = await supabaseServer
+            .from("participants")
+            .upsert(
+                {
+                    room_code: code,
+                    name,
+                    is_scrum_master: isScumMaster,
+                },
+                {
+                    onConflict: "room_code,name",
+                }
+            );
+
+        if (participantError) {
+            console.error("Error adding participant:", participantError);
+            return { success: false, error: "Failed to join room" };
+        }
+
+        const roomData = await buildRoomObject(code);
+        
+        if (!roomData) {
+            console.error("Failed to retrieve room data after joining");
+            return { success: false, error: "Failed to retrieve room data. Service may be temporarily unavailable." };
+        }
+        
+        return { success: true, room: roomData, participantId: name };
+    } catch (error) {
+        console.error("Unexpected error joining room:", error);
+        return { success: false, error: "Service temporarily unavailable. Please try again later." };
     }
-
-    // Update last activity
-    const { error: updateError } = await supabaseServer
-        .from("rooms")
-        .update({ last_activity: new Date().toISOString() })
-        .eq("code", code);
-
-    if (updateError) {
-        console.error("Error updating room activity:", updateError);
-    }
-
-    // Add participant (or update if exists)
-    const { error: participantError } = await supabaseServer
-        .from("participants")
-        .upsert(
-            {
-                room_code: code,
-                name,
-                is_scrum_master: isScumMaster,
-            },
-            {
-                onConflict: "room_code,name",
-            }
-        );
-
-    if (participantError) {
-        console.error("Error adding participant:", participantError);
-        return { success: false, error: "Failed to join room" };
-    }
-
-    const roomData = await buildRoomObject(code);
-    return { success: true, room: roomData, participantId: name };
 }
 
 export async function getRoomState(code: string) {
-    const room = await buildRoomObject(code);
-    if (!room) {
-        return { success: false, error: "Room not found" };
+    try {
+        const room = await buildRoomObject(code);
+        if (!room) {
+            return { success: false, error: "Room not found" };
+        }
+
+        // Don't update last_activity here - it causes infinite loops with Realtime
+        // Only update last_activity on real actions (vote, start voting, etc.)
+
+        return { success: true, room };
+    } catch (error) {
+        console.error("Unexpected error getting room state:", error);
+        return { success: false, error: "Service temporarily unavailable. Please try again later." };
     }
-
-    // Don't update last_activity here - it causes infinite loops with Realtime
-    // Only update last_activity on real actions (vote, start voting, etc.)
-
-    return { success: true, room };
 }
 
 export async function submitVote(
@@ -192,133 +227,144 @@ export async function submitVote(
     participantId: string,
     vote: number | null
 ) {
-    // Update last activity
-    const { error: updateError } = await supabaseServer
-        .from("rooms")
-        .update({ last_activity: new Date().toISOString() })
-        .eq("code", code);
+    try {
+        // Update last activity
+        const { error: updateError } = await supabaseServer
+            .from("rooms")
+            .update({ last_activity: new Date().toISOString() })
+            .eq("code", code);
 
-    if (updateError) {
-        console.error("Error updating room activity:", updateError);
-    }
-
-    if (vote === null) {
-        // Remove vote
-        const { error: deleteError } = await supabaseServer
-            .from("votes")
-            .delete()
-            .eq("room_code", code)
-            .eq("participant_name", participantId);
-
-        if (deleteError) {
-            console.error("Error deleting vote:", deleteError);
+        if (updateError) {
+            console.error("Error updating room activity:", updateError);
         }
-    } else {
-        // Insert or update vote
-        const { error: voteError } = await supabaseServer.from("votes").upsert(
-            {
-                room_code: code,
-                participant_name: participantId,
-                vote_value: vote,
-                created_at: new Date().toISOString(),
-            },
-            {
-                onConflict: "room_code,participant_name",
+
+        if (vote === null) {
+            // Remove vote
+            const { error: deleteError } = await supabaseServer
+                .from("votes")
+                .delete()
+                .eq("room_code", code)
+                .eq("participant_name", participantId);
+
+            if (deleteError) {
+                console.error("Error deleting vote:", deleteError);
+                return { success: false, error: "Failed to remove vote" };
             }
-        );
+        } else {
+            // Insert or update vote
+            const { error: voteError } = await supabaseServer.from("votes").upsert(
+                {
+                    room_code: code,
+                    participant_name: participantId,
+                    vote_value: vote,
+                    created_at: new Date().toISOString(),
+                },
+                {
+                    onConflict: "room_code,participant_name",
+                }
+            );
 
-        if (voteError) {
-            console.error("Error submitting vote:", voteError);
-            return { success: false, error: "Failed to submit vote" };
+            if (voteError) {
+                console.error("Error submitting vote:", voteError);
+                return { success: false, error: "Failed to submit vote" };
+            }
         }
-    }
 
-    const room = await buildRoomObject(code);
-    if (!room) {
-        return { success: false, error: "Room not found" };
-    }
+        const room = await buildRoomObject(code);
+        if (!room) {
+            return { success: false, error: "Failed to retrieve room data" };
+        }
 
-    return { success: true, room };
+        return { success: true, room };
+    } catch (error) {
+        console.error("Unexpected error submitting vote:", error);
+        return { success: false, error: "Service temporarily unavailable. Please try again later." };
+    }
 }
 
 export async function revealVotes(code: string) {
-    // First, get the current story ID
-    const { data: roomData } = await supabaseServer
-        .from("rooms")
-        .select("current_story_id")
-        .eq("code", code)
-        .single();
-
-    if (!roomData) {
-        return { success: false, error: "Room not found" };
-    }
-
-    // Get the current story by ID
-    let currentStory = null;
-    if (roomData.current_story_id) {
-        const { data: storyData } = await supabaseServer
-            .from("stories")
-            .select("id, title")
-            .eq("id", roomData.current_story_id)
+    try {
+        // First, get the current story ID
+        const { data: roomData, error: roomError } = await supabaseServer
+            .from("rooms")
+            .select("current_story_id")
+            .eq("code", code)
             .single();
-        currentStory = storyData;
-    }
 
-    // Get all current votes
-    const { data: votes } = await supabaseServer
-        .from("votes")
-        .select("participant_name, vote_value, created_at")
-        .eq("room_code", code);
-
-    // Save votes to history if there's a current story and votes exist
-    if (currentStory && votes && votes.length > 0) {
-        const historyRecords = votes.map((vote) => ({
-            room_code: code,
-            story_id: currentStory.id,
-            story_title: currentStory.title,
-            participant_name: vote.participant_name,
-            vote_value: vote.vote_value,
-            voted_at: vote.created_at,
-            revealed_at: new Date().toISOString(),
-        }));
-
-        const { error: historyError } = await supabaseServer
-            .from("vote_history")
-            .insert(historyRecords);
-
-        if (historyError) {
-            console.error("Error saving vote history:", historyError);
-            // Continue anyway - don't fail the reveal if history fails
+        if (roomError || !roomData) {
+            return { success: false, error: "Room not found" };
         }
 
-        // Update the story with voted_at timestamp
-        await supabaseServer
-            .from("stories")
-            .update({ voted_at: new Date().toISOString() })
-            .eq("id", currentStory.id);
+        // Get the current story by ID
+        let currentStory = null;
+        if (roomData.current_story_id) {
+            const { data: storyData } = await supabaseServer
+                .from("stories")
+                .select("id, title")
+                .eq("id", roomData.current_story_id)
+                .single();
+            currentStory = storyData;
+        }
+
+        // Get all current votes
+        const { data: votes } = await supabaseServer
+            .from("votes")
+            .select("participant_name, vote_value, created_at")
+            .eq("room_code", code);
+
+        // Save votes to history if there's a current story and votes exist
+        if (currentStory && votes && votes.length > 0) {
+            const historyRecords = votes.map((vote) => ({
+                room_code: code,
+                story_id: currentStory.id,
+                story_title: currentStory.title,
+                participant_name: vote.participant_name,
+                vote_value: vote.vote_value,
+                voted_at: vote.created_at,
+                revealed_at: new Date().toISOString(),
+            }));
+
+            const { error: historyError } = await supabaseServer
+                .from("vote_history")
+                .insert(historyRecords);
+
+            if (historyError) {
+                console.error("Error saving vote history:", historyError);
+                // Continue anyway - don't fail the reveal if history fails
+            }
+
+            // Update the story with voted_at timestamp
+            await supabaseServer
+                .from("stories")
+                .update({ voted_at: new Date().toISOString() })
+                .eq("id", currentStory.id);
+        }
+
+        // Update room state to revealed
+        const { error } = await supabaseServer
+            .from("rooms")
+            .update({
+                voting_state: "revealed",
+                votes_revealed: true,
+                last_activity: new Date().toISOString(),
+            })
+            .eq("code", code);
+
+        if (error) {
+            console.error("Error revealing votes:", error);
+            return { success: false, error: "Failed to reveal votes" };
+        }
+
+        const room = await buildRoomObject(code);
+        if (!room) {
+            return { success: false, error: "Failed to retrieve room data" };
+        }
+
+        return { success: true, room };
+    } catch (error) {
+        console.error("Unexpected error revealing votes:", error);
+        return { success: false, error: "Service temporarily unavailable. Please try again later." };
     }
-
-    // Update room state to revealed
-    const { error } = await supabaseServer
-        .from("rooms")
-        .update({
-            voting_state: "revealed",
-            votes_revealed: true,
-            last_activity: new Date().toISOString(),
-        })
-        .eq("code", code);
-
-    if (error) {
-        console.error("Error revealing votes:", error);
-        return { success: false, error: "Failed to reveal votes" };
-    }
-
-    const room = await buildRoomObject(code);
-    if (!room) {
-        return { success: false, error: "Room not found" };
-    }
-
-    return { success: true, room };
 }
 
 export async function startVoting(
@@ -326,9 +372,210 @@ export async function startVoting(
     story?: Story,
     timerSeconds?: number
 ) {
-    // If a new story is provided, add it to the queue
-    // This is only used when starting voting with a completely new story
-    if (story) {
+    try {
+        // If a new story is provided, add it to the queue
+        // This is only used when starting voting with a completely new story
+        if (story) {
+            const { data: maxOrderData } = await supabaseServer
+                .from("stories")
+                .select("order_index")
+                .eq("room_code", code)
+                .order("order_index", { ascending: false })
+                .limit(1)
+                .single();
+
+            const maxOrder = maxOrderData?.order_index ?? -1;
+
+            const { error: insertError } = await supabaseServer
+                .from("stories")
+                .insert({
+                    room_code: code,
+                    title: story.title,
+                    jira_link: story.jiraLink || null,
+                    order_index: maxOrder + 1,
+                });
+
+            if (insertError) {
+                console.error("Error inserting story:", insertError);
+                return { success: false, error: "Failed to add story" };
+            }
+        }
+
+        // Clear all votes
+        const { error: deleteError } = await supabaseServer
+            .from("votes")
+            .delete()
+            .eq("room_code", code);
+
+        if (deleteError) {
+            console.error("Error deleting votes:", deleteError);
+        }
+
+        // Update room state
+        const timerEndTime = timerSeconds ? Date.now() + timerSeconds * 1000 : null;
+
+        const { error: updateError } = await supabaseServer
+            .from("rooms")
+            .update({
+                voting_state: "voting",
+                votes_revealed: false,
+                timer_duration: timerSeconds || null,
+                timer_end_time: timerEndTime,
+                last_activity: new Date().toISOString(),
+            })
+            .eq("code", code);
+
+        if (updateError) {
+            console.error("Error updating room state:", updateError);
+            return { success: false, error: "Failed to start voting" };
+        }
+
+        const room = await buildRoomObject(code);
+        if (!room) {
+            return { success: false, error: "Failed to retrieve room data" };
+        }
+
+        return { success: true, room };
+    } catch (error) {
+        console.error("Unexpected error starting voting:", error);
+        return { success: false, error: "Service temporarily unavailable. Please try again later." };
+    }
+}
+
+export async function nextStory(code: string) {
+    try {
+        // Get current story ID
+        const { data: roomData, error: roomError } = await supabaseServer
+            .from("rooms")
+            .select("current_story_id")
+            .eq("code", code)
+            .single();
+
+        if (roomError || !roomData) {
+            return { success: false, error: "Room not found" };
+        }
+
+        // Get all stories ordered by order_index
+        const { data: stories } = await supabaseServer
+            .from("stories")
+            .select("id, title, final_estimate, order_index")
+            .eq("room_code", code)
+            .order("order_index", { ascending: true });
+
+        // Find the current story by ID
+        const currentStory = roomData.current_story_id
+            ? stories?.find(s => s.id === roomData.current_story_id)
+            : null;
+
+        // If there's a current story without a final estimate, calculate consensus from votes
+        if (currentStory && (currentStory.final_estimate === null || currentStory.final_estimate === undefined)) {
+            // Note: The votes table only contains votes for the current story.
+            // Votes are cleared when starting voting and when moving to the next story.
+            // Therefore, filtering by room_code is sufficient.
+            const { data: votes } = await supabaseServer
+                .from("votes")
+                .select("vote_value")
+                .eq("room_code", code);
+
+            // If there are votes, calculate the consensus (median rounded to nearest Fibonacci value)
+            if (votes && votes.length > 0) {
+                const voteValues = votes.map(v => v.vote_value).filter(v => v !== null) as number[];
+
+                if (voteValues.length > 0) {
+                    // Calculate median
+                    const sorted = [...voteValues].sort((a, b) => a - b);
+                    const median = sorted.length % 2 === 0
+                        ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+                        : sorted[Math.floor(sorted.length / 2)];
+
+                    // Find closest Fibonacci value to the median
+                    // Cast to number[] since FIBONACCI_VALUES only contains numbers (null is excluded in practice)
+                    const fibNumbers = FIBONACCI_VALUES.filter(v => v !== null) as number[];
+                    let consensus = fibNumbers[0];
+                    let minDiff = Math.abs(median - consensus);
+
+                    for (const fibValue of fibNumbers) {
+                        const diff = Math.abs(median - fibValue);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            consensus = fibValue;
+                        }
+                    }
+
+                    // Update story with consensus as final estimate
+                    await supabaseServer
+                        .from("stories")
+                        .update({ final_estimate: consensus })
+                        .eq("id", currentStory.id);
+                }
+            }
+        }
+
+        // Find the next unestimated story after the current one
+        let nextStoryId: number | null = null;
+        if (stories && stories.length > 0) {
+            const currentOrderIndex = currentStory?.order_index ?? -1;
+
+            // First, look for unestimated stories after the current one
+            const nextUnestimated = stories.find(
+                s => s.order_index > currentOrderIndex &&
+                     (s.final_estimate === null || s.final_estimate === undefined)
+            );
+
+            if (nextUnestimated) {
+                nextStoryId = nextUnestimated.id;
+            } else {
+                // If no unestimated stories after current, look from the beginning
+                const firstUnestimated = stories.find(
+                    s => s.final_estimate === null || s.final_estimate === undefined
+                );
+                if (firstUnestimated) {
+                    nextStoryId = firstUnestimated.id;
+                }
+            }
+        }
+
+        // Clear votes and move to next story
+        const { error: deleteError } = await supabaseServer
+            .from("votes")
+            .delete()
+            .eq("room_code", code);
+
+        if (deleteError) {
+            console.error("Error deleting votes:", deleteError);
+        }
+
+        const { error: updateError } = await supabaseServer
+            .from("rooms")
+            .update({
+                current_story_id: nextStoryId,
+                voting_state: "idle",
+                votes_revealed: false,
+                timer_duration: null,
+                timer_end_time: null,
+                last_activity: new Date().toISOString(),
+            })
+            .eq("code", code);
+
+        if (updateError) {
+            console.error("Error updating room:", updateError);
+            return { success: false, error: "Failed to move to next story" };
+        }
+
+        const room = await buildRoomObject(code);
+        if (!room) {
+            return { success: false, error: "Failed to retrieve room data" };
+        }
+
+        return { success: true, room };
+    } catch (error) {
+        console.error("Unexpected error moving to next story:", error);
+        return { success: false, error: "Service temporarily unavailable. Please try again later." };
+    }
+}
+
+export async function addStoryToQueue(code: string, story: Story) {
+    try {
         const { data: maxOrderData } = await supabaseServer
             .from("stories")
             .select("order_index")
@@ -339,217 +586,31 @@ export async function startVoting(
 
         const maxOrder = maxOrderData?.order_index ?? -1;
 
-        const { error: insertError } = await supabaseServer
-            .from("stories")
-            .insert({
-                room_code: code,
-                title: story.title,
-                jira_link: story.jiraLink || null,
-                order_index: maxOrder + 1,
-            });
+        const { error: insertError } = await supabaseServer.from("stories").insert({
+            room_code: code,
+            title: story.title,
+            jira_link: story.jiraLink || null,
+            order_index: maxOrder + 1,
+        });
 
         if (insertError) {
             console.error("Error inserting story:", insertError);
             return { success: false, error: "Failed to add story" };
         }
-    }
 
-    // Clear all votes
-    const { error: deleteError } = await supabaseServer
-        .from("votes")
-        .delete()
-        .eq("room_code", code);
+        // Note: Not updating last_activity to avoid triggering unnecessary realtime events
+        // The stories table insert will trigger its own realtime event
 
-    if (deleteError) {
-        console.error("Error deleting votes:", deleteError);
-    }
-
-    // Update room state
-    const timerEndTime = timerSeconds ? Date.now() + timerSeconds * 1000 : null;
-
-    const { error: updateError } = await supabaseServer
-        .from("rooms")
-        .update({
-            voting_state: "voting",
-            votes_revealed: false,
-            timer_duration: timerSeconds || null,
-            timer_end_time: timerEndTime,
-            last_activity: new Date().toISOString(),
-        })
-        .eq("code", code);
-
-    if (updateError) {
-        console.error("Error updating room state:", updateError);
-        return { success: false, error: "Failed to start voting" };
-    }
-
-    const room = await buildRoomObject(code);
-    if (!room) {
-        return { success: false, error: "Room not found" };
-    }
-
-    return { success: true, room };
-}
-
-export async function nextStory(code: string) {
-    // Get current story ID
-    const { data: roomData, error: roomError } = await supabaseServer
-        .from("rooms")
-        .select("current_story_id")
-        .eq("code", code)
-        .single();
-
-    if (roomError || !roomData) {
-        return { success: false, error: "Room not found" };
-    }
-
-    // Get all stories ordered by order_index
-    const { data: stories } = await supabaseServer
-        .from("stories")
-        .select("id, title, final_estimate, order_index")
-        .eq("room_code", code)
-        .order("order_index", { ascending: true });
-
-    // Find the current story by ID
-    const currentStory = roomData.current_story_id
-        ? stories?.find(s => s.id === roomData.current_story_id)
-        : null;
-
-    // If there's a current story without a final estimate, calculate consensus from votes
-    if (currentStory && (currentStory.final_estimate === null || currentStory.final_estimate === undefined)) {
-        // Note: The votes table only contains votes for the current story.
-        // Votes are cleared when starting voting and when moving to the next story.
-        // Therefore, filtering by room_code is sufficient.
-        const { data: votes } = await supabaseServer
-            .from("votes")
-            .select("vote_value")
-            .eq("room_code", code);
-
-        // If there are votes, calculate the consensus (median rounded to nearest Fibonacci value)
-        if (votes && votes.length > 0) {
-            const voteValues = votes.map(v => v.vote_value).filter(v => v !== null) as number[];
-
-            if (voteValues.length > 0) {
-                // Calculate median
-                const sorted = [...voteValues].sort((a, b) => a - b);
-                const median = sorted.length % 2 === 0
-                    ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
-                    : sorted[Math.floor(sorted.length / 2)];
-
-                // Find closest Fibonacci value to the median
-                // Cast to number[] since FIBONACCI_VALUES only contains numbers (null is excluded in practice)
-                const fibNumbers = FIBONACCI_VALUES.filter(v => v !== null) as number[];
-                let consensus = fibNumbers[0];
-                let minDiff = Math.abs(median - consensus);
-
-                for (const fibValue of fibNumbers) {
-                    const diff = Math.abs(median - fibValue);
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        consensus = fibValue;
-                    }
-                }
-
-                // Update story with consensus as final estimate
-                await supabaseServer
-                    .from("stories")
-                    .update({ final_estimate: consensus })
-                    .eq("id", currentStory.id);
-            }
+        const room = await buildRoomObject(code);
+        if (!room) {
+            return { success: false, error: "Failed to retrieve room data" };
         }
+
+        return { success: true, room };
+    } catch (error) {
+        console.error("Unexpected error adding story to queue:", error);
+        return { success: false, error: "Service temporarily unavailable. Please try again later." };
     }
-
-    // Find the next unestimated story after the current one
-    let nextStoryId: number | null = null;
-    if (stories && stories.length > 0) {
-        const currentOrderIndex = currentStory?.order_index ?? -1;
-
-        // First, look for unestimated stories after the current one
-        const nextUnestimated = stories.find(
-            s => s.order_index > currentOrderIndex &&
-                 (s.final_estimate === null || s.final_estimate === undefined)
-        );
-
-        if (nextUnestimated) {
-            nextStoryId = nextUnestimated.id;
-        } else {
-            // If no unestimated stories after current, look from the beginning
-            const firstUnestimated = stories.find(
-                s => s.final_estimate === null || s.final_estimate === undefined
-            );
-            if (firstUnestimated) {
-                nextStoryId = firstUnestimated.id;
-            }
-        }
-    }
-
-    // Clear votes and move to next story
-    const { error: deleteError } = await supabaseServer
-        .from("votes")
-        .delete()
-        .eq("room_code", code);
-
-    if (deleteError) {
-        console.error("Error deleting votes:", deleteError);
-    }
-
-    const { error: updateError } = await supabaseServer
-        .from("rooms")
-        .update({
-            current_story_id: nextStoryId,
-            voting_state: "idle",
-            votes_revealed: false,
-            timer_duration: null,
-            timer_end_time: null,
-            last_activity: new Date().toISOString(),
-        })
-        .eq("code", code);
-
-    if (updateError) {
-        console.error("Error updating room:", updateError);
-        return { success: false, error: "Failed to move to next story" };
-    }
-
-    const room = await buildRoomObject(code);
-    if (!room) {
-        return { success: false, error: "Room not found" };
-    }
-
-    return { success: true, room };
-}
-
-export async function addStoryToQueue(code: string, story: Story) {
-    const { data: maxOrderData } = await supabaseServer
-        .from("stories")
-        .select("order_index")
-        .eq("room_code", code)
-        .order("order_index", { ascending: false })
-        .limit(1)
-        .single();
-
-    const maxOrder = maxOrderData?.order_index ?? -1;
-
-    const { error: insertError } = await supabaseServer.from("stories").insert({
-        room_code: code,
-        title: story.title,
-        jira_link: story.jiraLink || null,
-        order_index: maxOrder + 1,
-    });
-
-    if (insertError) {
-        console.error("Error inserting story:", insertError);
-        return { success: false, error: "Failed to add story" };
-    }
-
-    // Note: Not updating last_activity to avoid triggering unnecessary realtime events
-    // The stories table insert will trigger its own realtime event
-
-    const room = await buildRoomObject(code);
-    if (!room) {
-        return { success: false, error: "Room not found" };
-    }
-
-    return { success: true, room };
 }
 
 export async function reorderStories(
