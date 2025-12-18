@@ -35,9 +35,12 @@ export default function HomePage() {
             if (result.success && result.room) {
                 // Redirect to room setup page
                 router.push(`/room/${result.room.code}/setup`);
+            } else {
+                alert(result.error || "Failed to create room");
             }
         } catch (error) {
             logger.error("Failed to create room:", error);
+            alert("Failed to create room. Please try again later.");
         } finally {
             setIsCreating(false);
         }
