@@ -229,6 +229,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             maxResults: request.maxResults,
           });
 
+        case 'getIssueTypes':
+          return await sendToJiraTab('getIssueTypes', {
+            projectKey: request.projectKey,
+          });
+
+        case 'createSubtask':
+          return await sendToJiraTab('createSubtask', {
+            parentKey: request.parentKey,
+            summary: request.summary,
+            projectKey: request.projectKey,
+            subtaskTypeId: request.subtaskTypeId,
+          });
+
+        case 'createSubtasks':
+          return await sendToJiraTab('createSubtasks', {
+            parentKey: request.parentKey,
+            subtasks: request.subtasks,
+            projectKey: request.projectKey,
+          });
+
+        case 'getSubtasks':
+          return await sendToJiraTab('getSubtasks', {
+            issueKey: request.issueKey,
+          });
+
         case 'extractIssueKey':
           return { issueKey: extractIssueKey(request.input) };
 

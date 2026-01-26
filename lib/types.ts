@@ -13,8 +13,11 @@ export interface Story {
     id: string;
     title: string;
     jiraLink?: string;
+    jiraKey?: string;
     finalEstimate?: number | null;
     votedAt?: string | null;
+    parentId?: string | null;
+    children?: Story[];
 }
 
 export interface Room {

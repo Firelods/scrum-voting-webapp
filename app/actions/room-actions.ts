@@ -14,6 +14,50 @@ function generateRoomCode(): string {
     return code;
 }
 
+// Helper function to build story hierarchy (parent with children)
+function buildStoryHierarchy(stories: any[]): Story[] {
+    // Create a map of all stories
+    const storyMap = new Map<string, Story>();
+    const childrenMap = new Map<string, Story[]>();
+
+    // First pass: create all story objects
+    for (const s of stories) {
+        const story: Story = {
+            id: s.id.toString(),
+            title: s.title,
+            jiraLink: s.jira_link || undefined,
+            jiraKey: s.jira_key || undefined,
+            finalEstimate: s.final_estimate,
+            votedAt: s.voted_at,
+            parentId: s.parent_id ? s.parent_id.toString() : undefined,
+            children: [],
+        };
+        storyMap.set(story.id, story);
+
+        // Track children for each parent
+        if (s.parent_id) {
+            const parentIdStr = s.parent_id.toString();
+            if (!childrenMap.has(parentIdStr)) {
+                childrenMap.set(parentIdStr, []);
+            }
+            childrenMap.get(parentIdStr)!.push(story);
+        }
+    }
+
+    // Second pass: attach children to parents
+    for (const [parentId, children] of childrenMap) {
+        const parent = storyMap.get(parentId);
+        if (parent) {
+            parent.children = children;
+        }
+    }
+
+    // Return only top-level stories (those without parent_id)
+    return stories
+        .filter((s) => !s.parent_id)
+        .map((s) => storyMap.get(s.id.toString())!);
+}
+
 // Helper function to build Room object from database rows
 async function buildRoomObject(code: string): Promise<Room | null> {
     // Fetch room data first
@@ -38,7 +82,7 @@ async function buildRoomObject(code: string): Promise<Room | null> {
             .eq("room_code", code),
         supabaseServer
             .from("stories")
-            .select("id, title, jira_link, final_estimate, voted_at")
+            .select("id, title, jira_link, jira_key, final_estimate, voted_at, parent_id")
             .eq("room_code", code)
             .order("order_index", { ascending: true }),
     ]);
@@ -83,13 +127,7 @@ async function buildRoomObject(code: string): Promise<Room | null> {
                   votedAt: currentStory.voted_at,
               }
             : null,
-        storyQueue: (stories || []).map((s: any) => ({
-            id: s.id.toString(),
-            title: s.title,
-            jiraLink: s.jira_link || undefined,
-            finalEstimate: s.final_estimate,
-            votedAt: s.voted_at,
-        })),
+        storyQueue: buildStoryHierarchy(stories || []),
         participants: (participants || []).map((p: any) => ({
             id: p.name,
             name: p.name,
@@ -406,7 +444,7 @@ export async function nextStory(code: string) {
     // Get all stories ordered by order_index
     const { data: stories } = await supabaseServer
         .from("stories")
-        .select("id, title, final_estimate, order_index")
+        .select("id, title, final_estimate, order_index, parent_id")
         .eq("room_code", code)
         .order("order_index", { ascending: true });
 
@@ -455,6 +493,12 @@ export async function nextStory(code: string) {
                     .from("stories")
                     .update({ final_estimate: consensus })
                     .eq("id", currentStory.id);
+
+                // If this story has a parent, recalculate the parent's estimate
+                const storyData = stories?.find((s: any) => s.id === currentStory.id);
+                if (storyData?.parent_id) {
+                    await recalculateParentEstimate(code, storyData.parent_id.toString());
+                }
             }
         }
     }
@@ -786,6 +830,19 @@ export async function setFinalEstimate(
     estimate: number
 ): Promise<{ success: boolean; error?: string }> {
     try {
+        // First, get the story to check if it has a parent
+        const { data: story, error: fetchError } = await supabaseServer
+            .from("stories")
+            .select("parent_id")
+            .eq("id", parseInt(storyId))
+            .eq("room_code", code)
+            .single();
+
+        if (fetchError) {
+            console.error("Error fetching story:", fetchError);
+            return { success: false, error: "Story not found" };
+        }
+
         const { error } = await supabaseServer
             .from("stories")
             .update({ final_estimate: estimate })
@@ -795,6 +852,11 @@ export async function setFinalEstimate(
         if (error) {
             console.error("Error setting final estimate:", error);
             return { success: false, error: "Failed to set final estimate" };
+        }
+
+        // If this story has a parent, recalculate the parent's estimate
+        if (story?.parent_id) {
+            await recalculateParentEstimate(code, story.parent_id.toString());
         }
 
         // Update room activity
@@ -979,6 +1041,282 @@ export async function promoteToScrumMaster(
     } catch (error) {
         console.error("Failed to promote to scrum master:", error);
         return { success: false, error: "Failed to promote participant" };
+    }
+}
+
+// ==========================================
+// TICKET SPLITTING FUNCTIONS
+// ==========================================
+
+/**
+ * Split a story into multiple child stories
+ * The parent story will be marked as split and its estimate will be null
+ * Each child story can be estimated independently
+ */
+export async function splitStory(
+    code: string,
+    parentStoryId: string,
+    childTitles: string[]
+): Promise<{ success: boolean; error?: string; children?: Story[] }> {
+    try {
+        if (childTitles.length === 0) {
+            return { success: false, error: "At least one child story is required" };
+        }
+
+        // Verify the parent story exists and get its data
+        const { data: parentStory, error: parentError } = await supabaseServer
+            .from("stories")
+            .select("id, title, jira_link, jira_key, order_index")
+            .eq("id", parseInt(parentStoryId))
+            .eq("room_code", code)
+            .single();
+
+        if (parentError || !parentStory) {
+            return { success: false, error: "Parent story not found" };
+        }
+
+        // Clear the parent's final estimate since it's now a container
+        await supabaseServer
+            .from("stories")
+            .update({ final_estimate: null, voted_at: null })
+            .eq("id", parseInt(parentStoryId));
+
+        // Get the maximum order_index for children of this parent
+        const { data: maxChildOrder } = await supabaseServer
+            .from("stories")
+            .select("order_index")
+            .eq("room_code", code)
+            .eq("parent_id", parseInt(parentStoryId))
+            .order("order_index", { ascending: false })
+            .limit(1)
+            .single();
+
+        const startOrder = (maxChildOrder?.order_index ?? -1) + 1;
+
+        // Create child stories
+        const childStories = childTitles.map((title, index) => ({
+            room_code: code,
+            title: title.trim(),
+            parent_id: parseInt(parentStoryId),
+            order_index: startOrder + index,
+        }));
+
+        const { data: insertedChildren, error: insertError } = await supabaseServer
+            .from("stories")
+            .insert(childStories)
+            .select("id, title, jira_link, jira_key, final_estimate, voted_at, parent_id");
+
+        if (insertError) {
+            console.error("Error creating child stories:", insertError);
+            return { success: false, error: "Failed to create child stories" };
+        }
+
+        const children: Story[] = (insertedChildren || []).map((s: any) => ({
+            id: s.id.toString(),
+            title: s.title,
+            jiraLink: s.jira_link || undefined,
+            jiraKey: s.jira_key || undefined,
+            finalEstimate: s.final_estimate,
+            votedAt: s.voted_at,
+            parentId: s.parent_id?.toString(),
+        }));
+
+        return { success: true, children };
+    } catch (error) {
+        console.error("Failed to split story:", error);
+        return { success: false, error: "Failed to split story" };
+    }
+}
+
+/**
+ * Add a single child story to an existing parent
+ */
+export async function addChildStory(
+    code: string,
+    parentStoryId: string,
+    title: string,
+    jiraLink?: string,
+    jiraKey?: string
+): Promise<{ success: boolean; error?: string; child?: Story }> {
+    try {
+        // Verify the parent story exists
+        const { data: parentStory, error: parentError } = await supabaseServer
+            .from("stories")
+            .select("id")
+            .eq("id", parseInt(parentStoryId))
+            .eq("room_code", code)
+            .single();
+
+        if (parentError || !parentStory) {
+            return { success: false, error: "Parent story not found" };
+        }
+
+        // Get the maximum order_index for children of this parent
+        const { data: maxChildOrder } = await supabaseServer
+            .from("stories")
+            .select("order_index")
+            .eq("room_code", code)
+            .eq("parent_id", parseInt(parentStoryId))
+            .order("order_index", { ascending: false })
+            .limit(1)
+            .single();
+
+        const newOrder = (maxChildOrder?.order_index ?? -1) + 1;
+
+        // Create the child story
+        const { data: insertedChild, error: insertError } = await supabaseServer
+            .from("stories")
+            .insert({
+                room_code: code,
+                title: title.trim(),
+                jira_link: jiraLink || null,
+                jira_key: jiraKey || null,
+                parent_id: parseInt(parentStoryId),
+                order_index: newOrder,
+            })
+            .select("id, title, jira_link, jira_key, final_estimate, voted_at, parent_id")
+            .single();
+
+        if (insertError || !insertedChild) {
+            console.error("Error creating child story:", insertError);
+            return { success: false, error: "Failed to create child story" };
+        }
+
+        const child: Story = {
+            id: insertedChild.id.toString(),
+            title: insertedChild.title,
+            jiraLink: insertedChild.jira_link || undefined,
+            jiraKey: insertedChild.jira_key || undefined,
+            finalEstimate: insertedChild.final_estimate,
+            votedAt: insertedChild.voted_at,
+            parentId: insertedChild.parent_id?.toString(),
+        };
+
+        return { success: true, child };
+    } catch (error) {
+        console.error("Failed to add child story:", error);
+        return { success: false, error: "Failed to add child story" };
+    }
+}
+
+/**
+ * Get all child stories for a parent
+ */
+export async function getChildStories(
+    code: string,
+    parentStoryId: string
+): Promise<{ success: boolean; error?: string; children?: Story[] }> {
+    try {
+        const { data: children, error } = await supabaseServer
+            .from("stories")
+            .select("id, title, jira_link, jira_key, final_estimate, voted_at, parent_id")
+            .eq("room_code", code)
+            .eq("parent_id", parseInt(parentStoryId))
+            .order("order_index", { ascending: true });
+
+        if (error) {
+            console.error("Error fetching child stories:", error);
+            return { success: false, error: "Failed to fetch child stories" };
+        }
+
+        const result: Story[] = (children || []).map((s: any) => ({
+            id: s.id.toString(),
+            title: s.title,
+            jiraLink: s.jira_link || undefined,
+            jiraKey: s.jira_key || undefined,
+            finalEstimate: s.final_estimate,
+            votedAt: s.voted_at,
+            parentId: s.parent_id?.toString(),
+        }));
+
+        return { success: true, children: result };
+    } catch (error) {
+        console.error("Failed to get child stories:", error);
+        return { success: false, error: "Failed to get child stories" };
+    }
+}
+
+/**
+ * Calculate and update parent's estimate based on children's estimates
+ * The parent's estimate is the sum of all children's estimates
+ */
+export async function recalculateParentEstimate(
+    code: string,
+    parentStoryId: string
+): Promise<{ success: boolean; error?: string; totalEstimate?: number | null }> {
+    try {
+        // Get all children
+        const { data: children, error: fetchError } = await supabaseServer
+            .from("stories")
+            .select("final_estimate")
+            .eq("room_code", code)
+            .eq("parent_id", parseInt(parentStoryId));
+
+        if (fetchError) {
+            console.error("Error fetching children for recalculation:", fetchError);
+            return { success: false, error: "Failed to fetch children" };
+        }
+
+        if (!children || children.length === 0) {
+            return { success: true, totalEstimate: null };
+        }
+
+        // Check if all children have estimates
+        const estimates = children.map((c) => c.final_estimate).filter((e) => e !== null && e !== undefined);
+
+        // Only set parent estimate if ALL children are estimated
+        let totalEstimate: number | null = null;
+        if (estimates.length === children.length && estimates.length > 0) {
+            totalEstimate = estimates.reduce((sum, e) => sum + e, 0);
+        }
+
+        // Update parent's estimate
+        const { error: updateError } = await supabaseServer
+            .from("stories")
+            .update({ final_estimate: totalEstimate })
+            .eq("id", parseInt(parentStoryId))
+            .eq("room_code", code);
+
+        if (updateError) {
+            console.error("Error updating parent estimate:", updateError);
+            return { success: false, error: "Failed to update parent estimate" };
+        }
+
+        return { success: true, totalEstimate };
+    } catch (error) {
+        console.error("Failed to recalculate parent estimate:", error);
+        return { success: false, error: "Failed to recalculate parent estimate" };
+    }
+}
+
+/**
+ * Update a child story's Jira link and key
+ */
+export async function updateChildStoryJira(
+    code: string,
+    storyId: string,
+    jiraLink: string,
+    jiraKey: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { error } = await supabaseServer
+            .from("stories")
+            .update({
+                jira_link: jiraLink || null,
+                jira_key: jiraKey || null,
+            })
+            .eq("id", parseInt(storyId))
+            .eq("room_code", code);
+
+        if (error) {
+            console.error("Error updating story Jira info:", error);
+            return { success: false, error: "Failed to update story Jira info" };
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to update story Jira info:", error);
+        return { success: false, error: "Failed to update story Jira info" };
     }
 }
 

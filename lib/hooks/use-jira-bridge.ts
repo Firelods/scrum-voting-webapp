@@ -7,6 +7,8 @@ import {
   waitForExtension,
   extractJiraKeyFromText,
   type JiraConnectionStatus,
+  type JiraSubtaskResult,
+  type JiraSubtask,
 } from "@/lib/jira-bridge";
 import { debugLog, debugError } from "@/lib/debug";
 
@@ -29,6 +31,12 @@ export interface UseJiraBridgeReturn {
     failed: number;
     errors: Array<{ jiraKey: string; error: string }>;
   }>;
+  createSubtasks: (
+    parentKey: string,
+    subtasks: { summary: string }[],
+    projectKey: string
+  ) => Promise<{ success: boolean; results?: JiraSubtaskResult[]; error?: string }>;
+  getSubtasks: (issueKey: string) => Promise<{ subtasks: JiraSubtask[]; error?: string }>;
 }
 
 export function useJiraBridge(): UseJiraBridgeReturn {
@@ -186,6 +194,53 @@ export function useJiraBridge(): UseJiraBridgeReturn {
     [uploadStoryPoints]
   );
 
+  const createSubtasks = useCallback(
+    async (
+      parentKey: string,
+      subtasks: { summary: string }[],
+      projectKey: string
+    ): Promise<{ success: boolean; results?: JiraSubtaskResult[]; error?: string }> => {
+      if (!isInstalled) {
+        return { success: false, error: "Extension non installée" };
+      }
+
+      if (!isConnected) {
+        return { success: false, error: "Non connecté à Jira" };
+      }
+
+      try {
+        const results = await JiraBridge.createSubtasks(parentKey, subtasks, projectKey);
+        const allSuccess = results.every((r) => r.success);
+        return { success: allSuccess, results };
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Erreur inconnue",
+        };
+      }
+    },
+    [isInstalled, isConnected]
+  );
+
+  const getSubtasks = useCallback(
+    async (issueKey: string): Promise<{ subtasks: JiraSubtask[]; error?: string }> => {
+      if (!isInstalled || !isConnected) {
+        return { subtasks: [], error: "Non connecté" };
+      }
+
+      try {
+        const subtasks = await JiraBridge.getSubtasks(issueKey);
+        return { subtasks };
+      } catch (err) {
+        return {
+          subtasks: [],
+          error: err instanceof Error ? err.message : "Erreur inconnue",
+        };
+      }
+    },
+    [isInstalled, isConnected]
+  );
+
   return {
     isInstalled,
     isConnected,
@@ -196,5 +251,7 @@ export function useJiraBridge(): UseJiraBridgeReturn {
     getStoryPoints,
     uploadStoryPoints,
     uploadMultipleStoryPoints,
+    createSubtasks,
+    getSubtasks,
   };
 }
