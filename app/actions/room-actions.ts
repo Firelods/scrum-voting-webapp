@@ -123,8 +123,10 @@ async function buildRoomObject(code: string): Promise<Room | null> {
                   id: currentStory.id.toString(),
                   title: currentStory.title,
                   jiraLink: currentStory.jira_link || undefined,
+                  jiraKey: currentStory.jira_key || undefined,
                   finalEstimate: currentStory.final_estimate,
                   votedAt: currentStory.voted_at,
+                  parentId: currentStory.parent_id ? currentStory.parent_id.toString() : undefined,
               }
             : null,
         storyQueue: buildStoryHierarchy(stories || []),

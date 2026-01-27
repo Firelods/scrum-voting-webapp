@@ -328,41 +328,84 @@ export default function RoomPage({
                 />
 
                 {/* Current Story */}
-                {room.currentStory && (
-                    <Card className="border-2 border-blue-500">
-                        <CardHeader>
-                            <CardTitle className="flex items-center justify-between">
-                                <span>Current Story</span>
-                                {room.votingActive && (
-                                    <Badge className="bg-green-500 dark:bg-green-600 text-white">
-                                        Voting Active
-                                    </Badge>
+                {room.currentStory && (() => {
+                    // Find parent story if current story is a child
+                    const findParentStory = (stories: typeof room.storyQueue, parentId: string | null | undefined): typeof room.storyQueue[0] | null => {
+                        if (!parentId) return null;
+                        for (const story of stories) {
+                            if (story.id === parentId) return story;
+                            if (story.children) {
+                                const found = findParentStory(story.children, parentId);
+                                if (found) return found;
+                            }
+                        }
+                        return null;
+                    };
+                    const parentStory = findParentStory(room.storyQueue, room.currentStory.parentId);
+                    const isChildStory = !!room.currentStory.parentId;
+
+                    return (
+                        <Card className={`border-2 ${isChildStory ? "border-orange-500" : "border-blue-500"}`}>
+                            <CardHeader>
+                                <CardTitle className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <span>Current Story</span>
+                                        {isChildStory && (
+                                            <Badge variant="outline" className="border-orange-400 text-orange-600 dark:text-orange-400">
+                                                Sous-ticket
+                                            </Badge>
+                                        )}
+                                    </div>
+                                    {room.votingActive && (
+                                        <Badge className="bg-green-500 dark:bg-green-600 text-white">
+                                            Voting Active
+                                        </Badge>
+                                    )}
+                                    {room.votesRevealed && (
+                                        <Badge className="bg-blue-500 dark:bg-blue-600 text-white">
+                                            Votes Revealed
+                                        </Badge>
+                                    )}
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                {/* Show parent story reference if this is a child */}
+                                {parentStory && (
+                                    <div className="mb-3 p-2 bg-orange-50 dark:bg-orange-950/30 rounded-lg border border-orange-200 dark:border-orange-800">
+                                        <p className="text-sm text-orange-700 dark:text-orange-300">
+                                            <span className="font-medium">Ticket parent :</span>{" "}
+                                            {parentStory.title}
+                                            {parentStory.jiraLink && (
+                                                <a
+                                                    href={parentStory.jiraLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="ml-2 inline-flex items-center text-orange-600 hover:text-orange-700 dark:text-orange-400"
+                                                >
+                                                    <ExternalLink className="w-3 h-3" />
+                                                </a>
+                                            )}
+                                        </p>
+                                    </div>
                                 )}
-                                {room.votesRevealed && (
-                                    <Badge className="bg-blue-500 dark:bg-blue-600 text-white">
-                                        Votes Revealed
-                                    </Badge>
+                                <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
+                                    {room.currentStory.title}
+                                </h2>
+                                {room.currentStory.jiraLink && (
+                                    <a
+                                        href={room.currentStory.jiraLink}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 text-sm"
+                                    >
+                                        View in Jira{" "}
+                                        <ExternalLink className="w-4 h-4" />
+                                    </a>
                                 )}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-                                {room.currentStory.title}
-                            </h2>
-                            {room.currentStory.jiraLink && (
-                                <a
-                                    href={room.currentStory.jiraLink}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 text-sm"
-                                >
-                                    View in Jira{" "}
-                                    <ExternalLink className="w-4 h-4" />
-                                </a>
-                            )}
-                        </CardContent>
-                    </Card>
-                )}
+                            </CardContent>
+                        </Card>
+                    );
+                })()}
 
                 {/* Main Content Grid */}
                 <div className="grid lg:grid-cols-3 gap-6">
@@ -491,90 +534,142 @@ export default function RoomPage({
                         </Dialog>
 
                         {/* Story Queue */}
-                        {room.storyQueue.length > 0 && (
-                            <Card>
-                                <CardHeader>
-                                    <div className="flex items-center justify-between">
-                                        <CardTitle className="flex items-center gap-2">
-                                            <span>Story Queue</span>
-                                            <Badge variant="secondary">
-                                                {showOnlyUnestimated
-                                                    ? room.storyQueue.filter(s => s.finalEstimate === null || s.finalEstimate === undefined).length
-                                                    : room.storyQueue.length}
-                                            </Badge>
-                                        </CardTitle>
-                                        <Button
-                                            variant={showOnlyUnestimated ? "default" : "outline"}
-                                            size="sm"
-                                            onClick={() => setShowOnlyUnestimated(!showOnlyUnestimated)}
+                        {room.storyQueue.length > 0 && (() => {
+                            // Count all stories including children
+                            const countAllStories = (stories: typeof room.storyQueue): number => {
+                                return stories.reduce((count, story) => {
+                                    return count + 1 + (story.children ? countAllStories(story.children) : 0);
+                                }, 0);
+                            };
+                            // Count unestimated stories including children
+                            const countUnestimated = (stories: typeof room.storyQueue): number => {
+                                return stories.reduce((count, story) => {
+                                    const thisUnestimated = (story.finalEstimate === null || story.finalEstimate === undefined) ? 1 : 0;
+                                    const childrenUnestimated = story.children ? countUnestimated(story.children) : 0;
+                                    return count + thisUnestimated + childrenUnestimated;
+                                }, 0);
+                            };
+                            const totalCount = countAllStories(room.storyQueue);
+                            const unestimatedCount = countUnestimated(room.storyQueue);
+
+                            // Render a story item (used for both parents and children)
+                            const renderStoryItem = (story: typeof room.storyQueue[0], index: number, isChild: boolean = false) => {
+                                const isCurrent = story.id === room.currentStory?.id;
+                                const hasChildren = story.children && story.children.length > 0;
+                                const isUnestimated = story.finalEstimate === null || story.finalEstimate === undefined;
+
+                                // Skip if filter is active and story is estimated (for non-parent stories)
+                                if (showOnlyUnestimated && !isUnestimated && !hasChildren) {
+                                    return null;
+                                }
+
+                                return (
+                                    <div key={story.id}>
+                                        <div
+                                            className={`p-3 rounded-lg border ${
+                                                isChild ? "ml-4 border-l-2 border-l-orange-300 dark:border-l-orange-700" : ""
+                                            } ${
+                                                isCurrent
+                                                    ? "bg-blue-50 dark:bg-blue-950 border-blue-500 dark:border-blue-500"
+                                                    : hasChildren
+                                                    ? "bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800"
+                                                    : "bg-gray-50 dark:bg-gray-800 border-transparent"
+                                            }`}
                                         >
-                                            <Filter className="w-3 h-3 mr-1" />
-                                            {showOnlyUnestimated ? "All" : "Unest."}
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-2">
-                                        {room.storyQueue
-                                            .filter(story => !showOnlyUnestimated || story.finalEstimate === null || story.finalEstimate === undefined)
-                                            .map((story) => {
-                                            const isCurrent = story.id === room.currentStory?.id;
-                                            const actualIndex = room.storyQueue.findIndex(s => s.id === story.id);
-                                            return (
-                                                <div
-                                                    key={story.id}
-                                                    className={`p-3 rounded-lg border ${
-                                                        isCurrent
-                                                            ? "bg-blue-50 dark:bg-blue-950 border-blue-500 dark:border-blue-500"
-                                                            : "bg-gray-50 dark:bg-gray-800 border-transparent"
-                                                    }`}
-                                                >
-                                                    <div className="flex items-start gap-2">
-                                                        <Badge
-                                                            variant="outline"
-                                                            className="mt-0.5 flex-shrink-0"
-                                                        >
-                                                            {actualIndex + 1}
-                                                        </Badge>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                                {isCurrent && (
-                                                                    <Badge className="bg-blue-600 dark:bg-blue-600 text-xs flex-shrink-0">
-                                                                        Current
-                                                                    </Badge>
-                                                                )}
-                                                                {story.finalEstimate !== null &&
-                                                                 story.finalEstimate !== undefined && (
-                                                                    <Badge variant="secondary" className="font-bold text-xs flex-shrink-0">
-                                                                        {story.finalEstimate} pts
-                                                                    </Badge>
-                                                                )}
-                                                            </div>
-                                                            <p className="font-medium text-sm text-gray-900 dark:text-white break-words line-clamp-2" title={story.title}>
-                                                                {story.title}
-                                                            </p>
-                                                            {story.jiraLink && (
-                                                                <a
-                                                                    href={
-                                                                        story.jiraLink
-                                                                    }
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 mt-1"
-                                                                >
-                                                                    Jira{" "}
-                                                                    <ExternalLink className="w-3 h-3" />
-                                                                </a>
-                                                            )}
-                                                        </div>
+                                            <div className="flex items-start gap-2">
+                                                {!isChild && (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="mt-0.5 flex-shrink-0"
+                                                    >
+                                                        {index + 1}
+                                                    </Badge>
+                                                )}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                        {isCurrent && (
+                                                            <Badge className="bg-blue-600 dark:bg-blue-600 text-xs flex-shrink-0">
+                                                                Current
+                                                            </Badge>
+                                                        )}
+                                                        {hasChildren && (
+                                                            <Badge variant="outline" className="border-orange-400 text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">
+                                                                {story.children!.length} sous-tickets
+                                                            </Badge>
+                                                        )}
+                                                        {story.finalEstimate !== null &&
+                                                         story.finalEstimate !== undefined && (
+                                                            <Badge variant="secondary" className={`font-bold text-xs flex-shrink-0 ${hasChildren ? "bg-orange-100 dark:bg-orange-900/50" : ""}`}>
+                                                                {story.finalEstimate} pts {hasChildren && "(total)"}
+                                                            </Badge>
+                                                        )}
                                                     </div>
+                                                    <p className="font-medium text-sm text-gray-900 dark:text-white break-words line-clamp-2" title={story.title}>
+                                                        {story.title}
+                                                    </p>
+                                                    {story.jiraLink && (
+                                                        <a
+                                                            href={story.jiraLink}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 mt-1"
+                                                        >
+                                                            Jira <ExternalLink className="w-3 h-3" />
+                                                        </a>
+                                                    )}
                                                 </div>
-                                            );
-                                        })}
+                                            </div>
+                                        </div>
+                                        {/* Render children */}
+                                        {hasChildren && (
+                                            <div className="mt-1 space-y-1">
+                                                {story.children!
+                                                    .filter(child => !showOnlyUnestimated || child.finalEstimate === null || child.finalEstimate === undefined)
+                                                    .map((child, childIndex) => renderStoryItem(child, childIndex, true))}
+                                            </div>
+                                        )}
                                     </div>
-                                </CardContent>
-                            </Card>
-                        )}
+                                );
+                            };
+
+                            return (
+                                <Card>
+                                    <CardHeader>
+                                        <div className="flex items-center justify-between">
+                                            <CardTitle className="flex items-center gap-2">
+                                                <span>Story Queue</span>
+                                                <Badge variant="secondary">
+                                                    {showOnlyUnestimated ? unestimatedCount : totalCount}
+                                                </Badge>
+                                            </CardTitle>
+                                            <Button
+                                                variant={showOnlyUnestimated ? "default" : "outline"}
+                                                size="sm"
+                                                onClick={() => setShowOnlyUnestimated(!showOnlyUnestimated)}
+                                            >
+                                                <Filter className="w-3 h-3 mr-1" />
+                                                {showOnlyUnestimated ? "All" : "Unest."}
+                                            </Button>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="space-y-2">
+                                            {room.storyQueue
+                                                .filter(story => {
+                                                    if (!showOnlyUnestimated) return true;
+                                                    // Show parent if it has unestimated children or is itself unestimated
+                                                    const hasUnestimatedChildren = story.children?.some(
+                                                        c => c.finalEstimate === null || c.finalEstimate === undefined
+                                                    );
+                                                    const isUnestimated = story.finalEstimate === null || story.finalEstimate === undefined;
+                                                    return isUnestimated || hasUnestimatedChildren;
+                                                })
+                                                .map((story, index) => renderStoryItem(story, index, false))}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            );
+                        })()}
                     </div>
                 </div>
             </div>
