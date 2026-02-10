@@ -184,6 +184,89 @@ const JiraActions = {
     );
     return result.issues || [];
   },
+
+  /**
+   * Récupère les types d'issues disponibles pour un projet
+   */
+  async getIssueTypes(projectKey) {
+    const project = await jiraFetch(`/rest/api/2/project/${projectKey}`);
+    return project.issueTypes || [];
+  },
+
+  /**
+   * Crée une sous-tâche liée à une issue parente
+   */
+  async createSubtask(parentKey, summary, projectKey, subtaskTypeId) {
+    // Si pas de subtaskTypeId fourni, essayer de trouver le type "Sub-task"
+    if (!subtaskTypeId) {
+      const issueTypes = await this.getIssueTypes(projectKey);
+      const subtaskType = issueTypes.find(t => t.subtask === true);
+      if (subtaskType) {
+        subtaskTypeId = subtaskType.id;
+      } else {
+        throw new Error('No subtask type found for this project');
+      }
+    }
+
+    const payload = {
+      fields: {
+        project: { key: projectKey },
+        parent: { key: parentKey },
+        summary: summary,
+        issuetype: { id: subtaskTypeId },
+      },
+    };
+
+    debugLog('Creating subtask:', payload);
+
+    const result = await jiraFetch('/rest/api/2/issue', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    return {
+      key: result.key,
+      id: result.id,
+      self: result.self,
+    };
+  },
+
+  /**
+   * Crée plusieurs sous-tâches en batch
+   */
+  async createSubtasks(parentKey, subtasks, projectKey) {
+    const results = [];
+    const issueTypes = await this.getIssueTypes(projectKey);
+    const subtaskType = issueTypes.find(t => t.subtask === true);
+
+    if (!subtaskType) {
+      throw new Error('No subtask type found for this project');
+    }
+
+    for (const subtask of subtasks) {
+      try {
+        const result = await this.createSubtask(
+          parentKey,
+          subtask.summary,
+          projectKey,
+          subtaskType.id
+        );
+        results.push({ success: true, ...result, summary: subtask.summary });
+      } catch (error) {
+        results.push({ success: false, error: error.message, summary: subtask.summary });
+      }
+    }
+
+    return results;
+  },
+
+  /**
+   * Récupère les sous-tâches d'une issue
+   */
+  async getSubtasks(issueKey) {
+    const issue = await jiraFetch(`/rest/api/2/issue/${issueKey}?fields=subtasks`);
+    return issue.fields?.subtasks || [];
+  },
 };
 
 /**
@@ -227,6 +310,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         case 'jira_getSprintIssues':
           return await JiraActions.getSprintIssues(payload.sprintId, payload.maxResults);
+
+        case 'jira_getIssueTypes':
+          return await JiraActions.getIssueTypes(payload.projectKey);
+
+        case 'jira_createSubtask':
+          return await JiraActions.createSubtask(
+            payload.parentKey,
+            payload.summary,
+            payload.projectKey,
+            payload.subtaskTypeId
+          );
+
+        case 'jira_createSubtasks':
+          return await JiraActions.createSubtasks(
+            payload.parentKey,
+            payload.subtasks,
+            payload.projectKey
+          );
+
+        case 'jira_getSubtasks':
+          return await JiraActions.getSubtasks(payload.issueKey);
 
         case 'jira_ping':
           return {

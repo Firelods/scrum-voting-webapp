@@ -50,6 +50,40 @@ export interface JiraIssue {
   };
 }
 
+export interface JiraIssueType {
+  id: string;
+  name: string;
+  subtask: boolean;
+  iconUrl?: string;
+}
+
+export interface JiraCreatedIssue {
+  key: string;
+  id: string;
+  self: string;
+}
+
+export interface JiraSubtaskResult {
+  success: boolean;
+  key?: string;
+  id?: string;
+  self?: string;
+  summary: string;
+  error?: string;
+}
+
+export interface JiraSubtask {
+  id: string;
+  key: string;
+  self: string;
+  fields: {
+    summary: string;
+    status: {
+      name: string;
+    };
+  };
+}
+
 // Timeout pour les requêtes (ms)
 const REQUEST_TIMEOUT = 10000;
 
@@ -241,6 +275,52 @@ export const JiraBridge = {
    */
   async ping(): Promise<{ success: boolean; message: string }> {
     return sendRequest<{ success: boolean; message: string }>('ping');
+  },
+
+  /**
+   * Récupère les types d'issues disponibles pour un projet
+   */
+  async getIssueTypes(projectKey: string): Promise<JiraIssueType[]> {
+    return sendRequest<JiraIssueType[]>('getIssueTypes', { projectKey });
+  },
+
+  /**
+   * Crée une sous-tâche liée à une issue parente
+   */
+  async createSubtask(
+    parentKey: string,
+    summary: string,
+    projectKey: string,
+    subtaskTypeId?: string
+  ): Promise<JiraCreatedIssue> {
+    return sendRequest<JiraCreatedIssue>('createSubtask', {
+      parentKey,
+      summary,
+      projectKey,
+      subtaskTypeId,
+    });
+  },
+
+  /**
+   * Crée plusieurs sous-tâches en batch
+   */
+  async createSubtasks(
+    parentKey: string,
+    subtasks: { summary: string }[],
+    projectKey: string
+  ): Promise<JiraSubtaskResult[]> {
+    return sendRequest<JiraSubtaskResult[]>('createSubtasks', {
+      parentKey,
+      subtasks,
+      projectKey,
+    });
+  },
+
+  /**
+   * Récupère les sous-tâches d'une issue
+   */
+  async getSubtasks(issueKey: string): Promise<JiraSubtask[]> {
+    return sendRequest<JiraSubtask[]>('getSubtasks', { issueKey });
   },
 };
 

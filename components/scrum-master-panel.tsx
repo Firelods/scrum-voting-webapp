@@ -653,6 +653,7 @@ export function ScrumMasterPanel({
                                 roomCode={room.code}
                                 stories={room.storyQueue}
                                 currentStoryId={room.currentStory?.id}
+                                jiraBaseUrl={room.jiraBaseUrl}
                             />
                         </DialogContent>
                     </Dialog>

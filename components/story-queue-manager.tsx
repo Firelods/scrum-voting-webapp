@@ -36,23 +36,29 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { GripVertical, Trash2, ExternalLink, Edit, Filter, Play, Upload, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { GripVertical, Trash2, ExternalLink, Edit, Filter, Play, Upload, CheckCircle, XCircle, Loader2, Scissors, ChevronDown, ChevronRight } from "lucide-react";
 import { reorderStories, deleteStory, updateStory, setCurrentStory } from "@/app/actions/room-actions";
 import { useJiraBridge } from "@/lib/hooks/use-jira-bridge";
 import { extractJiraKeyFromText } from "@/lib/jira-bridge";
+import { SplitStoryDialog } from "@/components/split-story-dialog";
+import { PushChildrenToJiraDialog } from "@/components/push-children-to-jira-dialog";
 
 interface Story {
     id: string;
     title: string;
     jiraLink?: string;
+    jiraKey?: string;
     finalEstimate?: number | null;
     votedAt?: string | null;
+    parentId?: string | null;
+    children?: Story[];
 }
 
 interface StoryQueueManagerProps {
     roomCode: string;
     stories: Story[];
     currentStoryId?: string | null;
+    jiraBaseUrl?: string | null;
 }
 
 // État d'upload pour chaque story
@@ -68,6 +74,13 @@ function SortableStoryItem({
     uploadStatus,
     isJiraConnected,
     jiraStoryPoints,
+    roomCode,
+    currentStoryId,
+    uploadStatuses,
+    allJiraStoryPoints,
+    onUploadChild,
+    isChild = false,
+    jiraBaseUrl,
 }: {
     story: Story;
     onDelete?: (id: string) => void;
@@ -78,10 +91,20 @@ function SortableStoryItem({
     uploadStatus?: UploadStatus;
     isJiraConnected?: boolean;
     jiraStoryPoints?: number | null;
+    roomCode: string;
+    currentStoryId?: string | null;
+    uploadStatuses?: Record<string, UploadStatus>;
+    allJiraStoryPoints?: Record<string, number | null>;
+    onUploadChild?: (story: Story) => void;
+    isChild?: boolean;
+    jiraBaseUrl?: string | null;
 }) {
     const [isEditing, setIsEditing] = useState(false);
     const [editTitle, setEditTitle] = useState(story.title);
     const [editJiraLink, setEditJiraLink] = useState(story.jiraLink || "");
+    const [isExpanded, setIsExpanded] = useState(true);
+
+    const hasChildren = story.children && story.children.length > 0;
 
     // Vérifie si les SP sont synchronisés
     const isSynced = jiraStoryPoints !== null &&
@@ -117,64 +140,87 @@ function SortableStoryItem({
     };
 
     return (
-        <div
-            ref={setNodeRef}
-            style={style}
-            className={`flex items-center gap-3 p-3 rounded-lg border shadow-sm ${
-                isCurrent
-                    ? "bg-blue-50 dark:bg-blue-950 border-blue-500 dark:border-blue-500"
-                    : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-            }`}
-        >
+        <div className={isChild ? "ml-6 border-l-2 border-gray-200 dark:border-gray-700 pl-2" : ""}>
             <div
-                {...attributes}
-                {...listeners}
-                className="cursor-grab active:cursor-grabbing"
+                ref={setNodeRef}
+                style={style}
+                className={`flex items-center gap-3 p-3 rounded-lg border shadow-sm ${
+                    isCurrent
+                        ? "bg-blue-50 dark:bg-blue-950 border-blue-500 dark:border-blue-500"
+                        : hasChildren
+                        ? "bg-orange-50 dark:bg-orange-950/30 border-orange-300 dark:border-orange-700"
+                        : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                }`}
             >
-                <GripVertical className="w-5 h-5 text-gray-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                    {isCurrent && (
-                        <Badge className="bg-blue-600 dark:bg-blue-600 flex-shrink-0">
-                            Current
-                        </Badge>
-                    )}
-                    {story.finalEstimate !== null && story.finalEstimate !== undefined && (
-                        <Badge variant="secondary" className="font-bold flex-shrink-0">
-                            {story.finalEstimate} pts
-                        </Badge>
-                    )}
-                    {/* Afficher les SP Jira si différents ou pour info */}
-                    {isJiraConnected && jiraStoryPoints !== null && jiraStoryPoints !== undefined && (
-                        <Badge
-                            variant="outline"
-                            className={`flex-shrink-0 ${
-                                isSynced
-                                    ? "border-green-500 text-green-600 dark:text-green-400"
-                                    : "border-orange-500 text-orange-600 dark:text-orange-400"
-                            }`}
-                        >
-                            Jira: {jiraStoryPoints} pts
-                            {isSynced && " ✓"}
-                        </Badge>
-                    )}
-                    {story.jiraLink && (
-                        <a
-                            href={story.jiraLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex-shrink-0"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <ExternalLink className="w-4 h-4" />
-                        </a>
-                    )}
+                {/* Expand/Collapse toggle for parent stories */}
+                {hasChildren && (
+                    <button
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    >
+                        {isExpanded ? (
+                            <ChevronDown className="w-5 h-5" />
+                        ) : (
+                            <ChevronRight className="w-5 h-5" />
+                        )}
+                    </button>
+                )}
+                {!isChild && (
+                    <div
+                        {...attributes}
+                        {...listeners}
+                        className="cursor-grab active:cursor-grabbing"
+                    >
+                        <GripVertical className="w-5 h-5 text-gray-400" />
+                    </div>
+                )}
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                        {isCurrent && (
+                            <Badge className="bg-blue-600 dark:bg-blue-600 flex-shrink-0">
+                                Current
+                            </Badge>
+                        )}
+                        {hasChildren && (
+                            <Badge variant="outline" className="border-orange-400 text-orange-600 dark:text-orange-400 flex-shrink-0">
+                                {story.children!.length} sous-tickets
+                            </Badge>
+                        )}
+                        {story.finalEstimate !== null && story.finalEstimate !== undefined && (
+                            <Badge variant="secondary" className={`font-bold flex-shrink-0 ${hasChildren ? "bg-orange-100 dark:bg-orange-900/50" : ""}`}>
+                                {story.finalEstimate} pts {hasChildren && "(total)"}
+                            </Badge>
+                        )}
+                        {/* Afficher les SP Jira si différents ou pour info */}
+                        {isJiraConnected && jiraStoryPoints !== null && jiraStoryPoints !== undefined && (
+                            <Badge
+                                variant="outline"
+                                className={`flex-shrink-0 ${
+                                    isSynced
+                                        ? "border-green-500 text-green-600 dark:text-green-400"
+                                        : "border-orange-500 text-orange-600 dark:text-orange-400"
+                                }`}
+                            >
+                                Jira: {jiraStoryPoints} pts
+                                {isSynced && " ✓"}
+                            </Badge>
+                        )}
+                        {story.jiraLink && (
+                            <a
+                                href={story.jiraLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex-shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <ExternalLink className="w-4 h-4" />
+                            </a>
+                        )}
+                    </div>
+                    <h3 className="font-medium text-gray-900 dark:text-white break-words" title={story.title}>
+                        {story.title}
+                    </h3>
                 </div>
-                <h3 className="font-medium text-gray-900 dark:text-white break-words" title={story.title}>
-                    {story.title}
-                </h3>
-            </div>
             <div className="flex items-center gap-1">
                 {/* Upload to Jira button */}
                 {onUpload && canUpload && (
@@ -282,6 +328,21 @@ function SortableStoryItem({
                         </DialogContent>
                     </Dialog>
                 )}
+                {/* Push children to Jira button - only for parent stories with children */}
+                {hasChildren && !isChild && isJiraConnected && (
+                    <PushChildrenToJiraDialog
+                        roomCode={roomCode}
+                        parentStory={story}
+                        jiraBaseUrl={jiraBaseUrl}
+                    />
+                )}
+                {/* Split story button - only for top-level stories */}
+                {!isChild && (
+                    <SplitStoryDialog
+                        roomCode={roomCode}
+                        story={story}
+                    />
+                )}
                 {onDelete && (
                     <Button
                         variant="ghost"
@@ -294,6 +355,33 @@ function SortableStoryItem({
                 )}
             </div>
         </div>
+        {/* Child stories */}
+        {hasChildren && isExpanded && (
+            <div className="mt-2 space-y-2">
+                {story.children!.map((child) => (
+                    <SortableStoryItem
+                        key={child.id}
+                        story={child}
+                        onDelete={onDelete}
+                        onEdit={onEdit}
+                        onSetCurrent={onSetCurrent}
+                        onUpload={onUploadChild}
+                        isCurrent={child.id === currentStoryId}
+                        uploadStatus={uploadStatuses?.[child.id] || "idle"}
+                        isJiraConnected={isJiraConnected}
+                        jiraStoryPoints={allJiraStoryPoints?.[child.id]}
+                        roomCode={roomCode}
+                        currentStoryId={currentStoryId}
+                        uploadStatuses={uploadStatuses}
+                        allJiraStoryPoints={allJiraStoryPoints}
+                        onUploadChild={onUploadChild}
+                        isChild={true}
+                        jiraBaseUrl={jiraBaseUrl}
+                    />
+                ))}
+            </div>
+        )}
+        </div>
     );
 }
 
@@ -301,6 +389,7 @@ export function StoryQueueManager({
     roomCode,
     stories: initialStories,
     currentStoryId,
+    jiraBaseUrl,
 }: StoryQueueManagerProps) {
     const [stories, setStories] = useState(initialStories);
     const [showOnlyUnestimated, setShowOnlyUnestimated] = useState(false);
@@ -317,11 +406,24 @@ export function StoryQueueManager({
         setStories(initialStories);
     }, [initialStories]);
 
+    // Helper to flatten stories including children
+    const getAllStories = useCallback((storyList: Story[]): Story[] => {
+        const result: Story[] = [];
+        for (const story of storyList) {
+            result.push(story);
+            if (story.children && story.children.length > 0) {
+                result.push(...getAllStories(story.children));
+            }
+        }
+        return result;
+    }, []);
+
     // Récupérer les SP Jira quand connecté
     const fetchJiraStoryPoints = useCallback(async () => {
         if (!isJiraConnected) return;
 
-        const storiesWithJira = stories.filter(
+        const allStories = getAllStories(stories);
+        const storiesWithJira = allStories.filter(
             (s) => s.jiraLink && extractJiraKeyFromText(s.jiraLink || s.title)
         );
 
@@ -340,7 +442,7 @@ export function StoryQueueManager({
 
         setJiraStoryPoints(newJiraSP);
         setIsLoadingJiraSP(false);
-    }, [isJiraConnected, stories, getStoryPoints]);
+    }, [isJiraConnected, stories, getStoryPoints, getAllStories]);
 
     // Charger les SP Jira quand la connexion change ou les stories changent
     useEffect(() => {
@@ -386,7 +488,8 @@ export function StoryQueueManager({
 
     // Upload toutes les stories estimées vers Jira (non synced)
     const handleUploadAll = async () => {
-        const uploadableStories = stories.filter(
+        const allStories = getAllStories(stories);
+        const uploadableStories = allStories.filter(
             (s) =>
                 s.finalEstimate !== null &&
                 s.finalEstimate !== undefined &&
@@ -420,8 +523,8 @@ export function StoryQueueManager({
         }
     };
 
-    // Compter les stories uploadables (non synchronisées)
-    const uploadableCount = stories.filter(
+    // Compter les stories uploadables (non synchronisées) - inclut les enfants
+    const uploadableCount = getAllStories(stories).filter(
         (s) =>
             s.finalEstimate !== null &&
             s.finalEstimate !== undefined &&
@@ -565,6 +668,12 @@ export function StoryQueueManager({
                                         uploadStatus={uploadStatuses[story.id] || "idle"}
                                         isJiraConnected={isJiraConnected}
                                         jiraStoryPoints={jiraStoryPoints[story.id]}
+                                        roomCode={roomCode}
+                                        currentStoryId={currentStoryId}
+                                        uploadStatuses={uploadStatuses}
+                                        allJiraStoryPoints={jiraStoryPoints}
+                                        onUploadChild={handleUpload}
+                                        jiraBaseUrl={jiraBaseUrl}
                                     />
                                 ))}
                             </div>
