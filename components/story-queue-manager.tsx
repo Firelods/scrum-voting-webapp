@@ -49,6 +49,8 @@ interface Story {
     jiraLink?: string;
     jiraKey?: string;
     finalEstimate?: number | null;
+    timeEstimateHours?: number | null;
+    timeEstimateMinutes?: number | null;
     votedAt?: string | null;
     parentId?: string | null;
     children?: Story[];
@@ -189,6 +191,13 @@ function SortableStoryItem({
                         {story.finalEstimate !== null && story.finalEstimate !== undefined && (
                             <Badge variant="secondary" className={`font-bold flex-shrink-0 ${hasChildren ? "bg-orange-100 dark:bg-orange-900/50" : ""}`}>
                                 {story.finalEstimate} pts {hasChildren && "(total)"}
+                            </Badge>
+                        )}
+                        {(story.timeEstimateHours !== null && story.timeEstimateHours !== undefined) && (
+                            <Badge variant="secondary" className="font-bold flex-shrink-0 bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300">
+                                {story.timeEstimateHours > 0 && `${story.timeEstimateHours}h`}
+                                {story.timeEstimateMinutes !== null && story.timeEstimateMinutes !== undefined && story.timeEstimateMinutes > 0 && `${story.timeEstimateMinutes}m`}
+                                {story.timeEstimateHours === 0 && story.timeEstimateMinutes === 0 && "0h"}
                             </Badge>
                         )}
                         {/* Afficher les SP Jira si différents ou pour info */}
