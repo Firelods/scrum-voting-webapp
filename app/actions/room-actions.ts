@@ -2,7 +2,7 @@
 
 import { supabaseServer } from "@/lib/db-supabase";
 import type { Room, Story } from "@/lib/types";
-import { FIBONACCI_VALUES } from "@/lib/constants";
+import { FIBONACCI_VALUES, TIME_VALUES } from "@/lib/constants";
 
 // Helper function to generate a random room code
 function generateRoomCode(): string {
@@ -28,6 +28,8 @@ function buildStoryHierarchy(stories: any[]): Story[] {
             jiraLink: s.jira_link || undefined,
             jiraKey: s.jira_key || undefined,
             finalEstimate: s.final_estimate,
+            timeEstimateHours: s.time_estimate_hours || undefined,
+            timeEstimateMinutes: s.time_estimate_minutes || undefined,
             votedAt: s.voted_at,
             parentId: s.parent_id ? s.parent_id.toString() : undefined,
             children: [],
@@ -70,7 +72,7 @@ async function buildRoomObject(code: string): Promise<Room | null> {
     if (roomError || !roomData) return null;
 
     // Parallelize all dependent queries for better performance
-    const [participantsResult, votesResult, storiesResult] = await Promise.all([
+    const [participantsResult, votesResult, timeVotesResult, storiesResult] = await Promise.all([
         supabaseServer
             .from("participants")
             .select("name, is_scrum_master, is_voter")
@@ -81,8 +83,12 @@ async function buildRoomObject(code: string): Promise<Room | null> {
             .select("participant_name, vote_value")
             .eq("room_code", code),
         supabaseServer
+            .from("time_votes")
+            .select("participant_name, vote_hours")
+            .eq("room_code", code),
+        supabaseServer
             .from("stories")
-            .select("id, title, jira_link, jira_key, final_estimate, voted_at, parent_id")
+            .select("id, title, jira_link, jira_key, final_estimate, time_estimate_hours, time_estimate_minutes, voted_at, parent_id")
             .eq("room_code", code)
             .order("order_index", { ascending: true }),
     ]);
@@ -97,6 +103,11 @@ async function buildRoomObject(code: string): Promise<Room | null> {
         return null;
     }
 
+    if (timeVotesResult.error) {
+        console.error("Error fetching time votes:", timeVotesResult.error);
+        return null;
+    }
+
     if (storiesResult.error) {
         console.error("Error fetching stories:", storiesResult.error);
         return null;
@@ -104,11 +115,17 @@ async function buildRoomObject(code: string): Promise<Room | null> {
 
     const participants = participantsResult.data;
     const votes = votesResult.data;
+    const timeVotes = timeVotesResult.data;
     const stories = storiesResult.data;
 
     // Create a map of votes by participant name
     const voteMap = new Map(
         (votes || []).map((v: any) => [v.participant_name, v.vote_value])
+    );
+
+    // Create a map of time votes by participant name
+    const timeVoteMap = new Map(
+        (timeVotes || []).map((v: any) => [v.participant_name, v.vote_hours])
     );
 
     // Find current story by ID (more robust than index-based lookup)
@@ -125,6 +142,8 @@ async function buildRoomObject(code: string): Promise<Room | null> {
                   jiraLink: currentStory.jira_link || undefined,
                   jiraKey: currentStory.jira_key || undefined,
                   finalEstimate: currentStory.final_estimate,
+                  timeEstimateHours: currentStory.time_estimate_hours || undefined,
+                  timeEstimateMinutes: currentStory.time_estimate_minutes || undefined,
                   votedAt: currentStory.voted_at,
                   parentId: currentStory.parent_id ? currentStory.parent_id.toString() : undefined,
               }
@@ -134,12 +153,14 @@ async function buildRoomObject(code: string): Promise<Room | null> {
             id: p.name,
             name: p.name,
             vote: voteMap.get(p.name) || null,
+            timeVote: timeVoteMap.get(p.name) || null,
             isScumMaster: p.is_scrum_master,
             isOnline: true, // Always true since we removed heartbeat tracking
             isVoter: p.is_voter !== undefined ? p.is_voter : true,
         })),
         votingActive: roomData.voting_state === "voting",
         votesRevealed: roomData.votes_revealed,
+        timeEstimationEnabled: roomData.time_estimation_enabled !== false, // Default to true
         timerSeconds: roomData.timer_duration,
         timerStartedAt: roomData.timer_end_time
             ? roomData.timer_end_time - roomData.timer_duration * 1000
@@ -281,6 +302,60 @@ export async function submitVote(
     return { success: true, room };
 }
 
+export async function submitTimeVote(
+    code: string,
+    participantId: string,
+    vote: number | null
+) {
+    // Update last activity
+    const { error: updateError } = await supabaseServer
+        .from("rooms")
+        .update({ last_activity: new Date().toISOString() })
+        .eq("code", code);
+
+    if (updateError) {
+        console.error("Error updating room activity:", updateError);
+    }
+
+    if (vote === null) {
+        // Remove time vote
+        const { error: deleteError } = await supabaseServer
+            .from("time_votes")
+            .delete()
+            .eq("room_code", code)
+            .eq("participant_name", participantId);
+
+        if (deleteError) {
+            console.error("Error deleting time vote:", deleteError);
+        }
+    } else {
+        // Insert or update time vote
+        const { error: voteError } = await supabaseServer.from("time_votes").upsert(
+            {
+                room_code: code,
+                participant_name: participantId,
+                vote_hours: vote,
+                created_at: new Date().toISOString(),
+            },
+            {
+                onConflict: "room_code,participant_name",
+            }
+        );
+
+        if (voteError) {
+            console.error("Error submitting time vote:", voteError);
+            return { success: false, error: "Failed to submit time vote" };
+        }
+    }
+
+    const room = await buildRoomObject(code);
+    if (!room) {
+        return { success: false, error: "Room not found" };
+    }
+
+    return { success: true, room };
+}
+
 export async function revealVotes(code: string) {
     // First, get the current story ID
     const { data: roomData } = await supabaseServer
@@ -394,7 +469,7 @@ export async function startVoting(
         }
     }
 
-    // Clear all votes
+    // Clear all votes and time votes
     const { error: deleteError } = await supabaseServer
         .from("votes")
         .delete()
@@ -402,6 +477,15 @@ export async function startVoting(
 
     if (deleteError) {
         console.error("Error deleting votes:", deleteError);
+    }
+
+    const { error: deleteTimeError } = await supabaseServer
+        .from("time_votes")
+        .delete()
+        .eq("room_code", code);
+
+    if (deleteTimeError) {
+        console.error("Error deleting time votes:", deleteTimeError);
     }
 
     // Update room state
@@ -465,6 +549,14 @@ export async function nextStory(code: string) {
             .select("vote_value")
             .eq("room_code", code);
 
+        const { data: timeVotes } = await supabaseServer
+            .from("time_votes")
+            .select("vote_hours")
+            .eq("room_code", code);
+
+        let consensus: number | null = null;
+        let timeConsensus: number | null = null;
+
         // If there are votes, calculate the consensus (median rounded to nearest Fibonacci value)
         if (votes && votes.length > 0) {
             const voteValues = votes.map(v => v.vote_value).filter(v => v !== null) as number[];
@@ -479,7 +571,7 @@ export async function nextStory(code: string) {
                 // Find closest Fibonacci value to the median
                 // Cast to number[] since FIBONACCI_VALUES only contains numbers (null is excluded in practice)
                 const fibNumbers = FIBONACCI_VALUES.filter(v => v !== null) as number[];
-                let consensus = fibNumbers[0];
+                consensus = fibNumbers[0];
                 let minDiff = Math.abs(median - consensus);
 
                 for (const fibValue of fibNumbers) {
@@ -489,19 +581,58 @@ export async function nextStory(code: string) {
                         consensus = fibValue;
                     }
                 }
+            }
+        }
 
-                // Update story with consensus as final estimate
-                await supabaseServer
-                    .from("stories")
-                    .update({ final_estimate: consensus })
-                    .eq("id", currentStory.id);
+        // If there are time votes, calculate the time consensus
+        if (timeVotes && timeVotes.length > 0) {
+            const timeVoteValues = timeVotes.map(v => v.vote_hours).filter(v => v !== null) as number[];
 
-                // If this story has a parent, recalculate the parent's estimate
-                const storyData = stories?.find((s: any) => s.id === currentStory.id);
-                if (storyData?.parent_id) {
-                    await recalculateParentEstimate(code, storyData.parent_id.toString());
+            if (timeVoteValues.length > 0) {
+                // Calculate median
+                const sorted = [...timeVoteValues].sort((a, b) => a - b);
+                const median = sorted.length % 2 === 0
+                    ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+                    : sorted[Math.floor(sorted.length / 2)];
+
+                // Find closest time value to the median
+                const timeNumbers = TIME_VALUES.filter(v => v !== null) as number[];
+                timeConsensus = timeNumbers[0];
+                let minDiff = Math.abs(median - timeConsensus);
+
+                for (const timeValue of timeNumbers) {
+                    const diff = Math.abs(median - timeValue);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        timeConsensus = timeValue;
+                    }
                 }
             }
+        }
+
+        // Update story with consensus estimates
+        const updateData: any = {};
+        if (consensus !== null) {
+            updateData.final_estimate = consensus;
+        }
+        if (timeConsensus !== null) {
+            const hours = Math.floor(timeConsensus);
+            const minutes = Math.round((timeConsensus - hours) * 60);
+            updateData.time_estimate_hours = hours;
+            updateData.time_estimate_minutes = minutes;
+        }
+
+        if (Object.keys(updateData).length > 0) {
+            await supabaseServer
+                .from("stories")
+                .update(updateData)
+                .eq("id", currentStory.id);
+        }
+
+        // If this story has a parent, recalculate the parent's estimate
+        const storyData = stories?.find((s: any) => s.id === currentStory.id);
+        if (storyData?.parent_id) {
+            await recalculateParentEstimate(code, storyData.parent_id.toString());
         }
     }
 

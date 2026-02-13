@@ -3,15 +3,15 @@
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useRealtimeRoom } from "@/lib/hooks/use-realtime-room";
-import { submitVote } from "@/app/actions/room-actions";
+import { submitVote, submitTimeVote } from "@/app/actions/room-actions";
 import { FibonacciCard } from "@/components/fibonacci-card";
 import { ParticipantList } from "@/components/participant-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader, Skeleton } from "@/components/ui/loader";
-import type { FibonacciValue } from "@/lib/types";
-import { Copy, Check, ExternalLink, Settings, TrendingUp, Filter } from "lucide-react";
+import type { FibonacciValue, TimeValue } from "@/lib/types";
+import { Copy, Check, ExternalLink, Settings, TrendingUp, Filter, Clock } from "lucide-react";
 import { ScrumMasterPanel } from "@/components/scrum-master-panel";
 import { VotingResults } from "@/components/voting-results";
 import { VotingTimer } from "@/components/voting-timer";
@@ -27,7 +27,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { logger } from "@/lib/logger";
-import { FIBONACCI_VALUES } from "@/lib/constants";
+import { FIBONACCI_VALUES, TIME_VALUES } from "@/lib/constants";
 
 export default function RoomPage({
     params,
@@ -42,11 +42,13 @@ export default function RoomPage({
         participantId
     );
     const [selectedVote, setSelectedVote] = useState<FibonacciValue>(null);
+    const [selectedTimeVote, setSelectedTimeVote] = useState<TimeValue>(null);
     const [copiedCode, setCopiedCode] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
     const [showConfetti, setShowConfetti] = useState(false);
     const [confettiEnabled, setConfettiEnabled] = useState(true);
     const [isSubmittingVote, setIsSubmittingVote] = useState(false);
+    const [isSubmittingTimeVote, setIsSubmittingTimeVote] = useState(false);
     const [showVoteSummary, setShowVoteSummary] = useState(false);
     const [showOnlyUnestimated, setShowOnlyUnestimated] = useState(false);
 
@@ -77,6 +79,7 @@ export default function RoomPage({
             );
             if (participant) {
                 setSelectedVote(participant.vote);
+                setSelectedTimeVote(participant.timeVote);
             }
         }
     }, [room, participantId]);
@@ -106,6 +109,21 @@ export default function RoomPage({
             logger.error("Failed to submit vote:", error);
         } finally {
             setIsSubmittingVote(false);
+        }
+    };
+
+    const handleTimeVote = async (value: TimeValue) => {
+        if (!participantId || !room?.votingActive || isSubmittingTimeVote) return;
+
+        setSelectedTimeVote(value);
+        setIsSubmittingTimeVote(true);
+        try {
+            await submitTimeVote(code, participantId, value);
+            // WebSocket will automatically trigger an update, no need to call mutate()
+        } catch (error) {
+            logger.error("Failed to submit time vote:", error);
+        } finally {
+            setIsSubmittingTimeVote(false);
         }
     };
 
@@ -501,6 +519,83 @@ export default function RoomPage({
                                 )}
                             </CardContent>
                         </Card>
+
+                        {/* Time Estimation Card */}
+                        {room.timeEstimationEnabled && (
+                            <Card className="border-2">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Clock className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                                        Time Estimation
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    {!isVoter ? (
+                                        <div className="text-center py-8">
+                                            <p className="text-gray-600 dark:text-gray-400">
+                                                Observers cannot vote on time estimation.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {!room.votingActive && !room.votesRevealed && (
+                                                <div className="text-center py-8">
+                                                    <p className="text-gray-600 dark:text-gray-400">
+                                                        Waiting for voting to start...
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {room.votingActive && (
+                                                <div className="relative flex flex-wrap justify-center gap-2 md:gap-3">
+                                                    {isSubmittingTimeVote && (
+                                                        <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-800/50 rounded-lg z-10">
+                                                            <Loader size="md" className="text-amber-600 dark:text-amber-400" />
+                                                        </div>
+                                                    )}
+                                                    {TIME_VALUES.map((value) => (
+                                                        <FibonacciCard
+                                                            key={value}
+                                                            value={value}
+                                                            selected={
+                                                                selectedTimeVote === value
+                                                            }
+                                                            onClick={() =>
+                                                                handleTimeVote(value)
+                                                            }
+                                                            disabled={!room.votingActive || isSubmittingTimeVote}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {room.votesRevealed && (
+                                                <div className="flex flex-wrap justify-center gap-2 md:gap-3">
+                                                    {TIME_VALUES.map((value) => {
+                                                        const count =
+                                                            room.participants.filter(
+                                                                (p) => p.timeVote === value
+                                                            ).length;
+                                                        return (
+                                                            <FibonacciCard
+                                                                key={value}
+                                                                value={value}
+                                                                selected={
+                                                                    selectedTimeVote === value
+                                                                }
+                                                                disabled
+                                                                revealed
+                                                                count={count}
+                                                            />
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
                     </div>
 
                     {/* Sidebar */}
