@@ -23,7 +23,7 @@ export function ParticipantList({
                 </CardTitle>
             </CardHeader>
             <CardContent>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                     {participants.map((participant) => (
                         <div
                             key={participant.id}
