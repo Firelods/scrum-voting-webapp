@@ -91,7 +91,7 @@ export function ParticipantsManager({
                     <CardTitle>Participants ({participants.length})</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="space-y-2">
+                    <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                         {participants.map((participant) => (
                             <div
                                 key={participant.id}
