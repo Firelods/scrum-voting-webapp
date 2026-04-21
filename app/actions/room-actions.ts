@@ -496,6 +496,13 @@ export async function nextStory(code: string) {
                     .update({ final_estimate: consensus })
                     .eq("id", currentStory.id);
 
+                // Sync the in-memory array so the "find next" search below
+                // doesn't treat this story as unestimated (stale array bug)
+                const idx = stories?.findIndex(s => s.id === currentStory.id);
+                if (stories && idx !== undefined && idx >= 0) {
+                    stories[idx] = { ...stories[idx], final_estimate: consensus };
+                }
+
                 // If this story has a parent, recalculate the parent's estimate
                 const storyData = stories?.find((s: any) => s.id === currentStory.id);
                 if (storyData?.parent_id) {
@@ -520,8 +527,10 @@ export async function nextStory(code: string) {
             nextStoryId = nextUnestimated.id;
         } else {
             // If no unestimated stories after current, look from the beginning
+            // Exclude the current story — Next Story must always move to a different one
             const firstUnestimated = stories.find(
-                s => s.final_estimate === null || s.final_estimate === undefined
+                s => s.id !== currentStory?.id &&
+                     (s.final_estimate === null || s.final_estimate === undefined)
             );
             if (firstUnestimated) {
                 nextStoryId = firstUnestimated.id;
@@ -575,20 +584,38 @@ export async function addStoryToQueue(code: string, story: Story) {
 
     const maxOrder = maxOrderData?.order_index ?? -1;
 
-    const { error: insertError } = await supabaseServer.from("stories").insert({
-        room_code: code,
-        title: story.title,
-        jira_link: story.jiraLink || null,
-        order_index: maxOrder + 1,
-    });
+    const { data: insertedStory, error: insertError } = await supabaseServer
+        .from("stories")
+        .insert({
+            room_code: code,
+            title: story.title,
+            jira_link: story.jiraLink || null,
+            order_index: maxOrder + 1,
+        })
+        .select("id")
+        .single();
 
-    if (insertError) {
+    if (insertError || !insertedStory) {
         console.error("Error inserting story:", insertError);
         return { success: false, error: "Failed to add story" };
     }
 
-    // Note: Not updating last_activity to avoid triggering unnecessary realtime events
-    // The stories table insert will trigger its own realtime event
+    // Auto-set as current story if the room has none yet
+    const { data: roomData } = await supabaseServer
+        .from("rooms")
+        .select("current_story_id")
+        .eq("code", code)
+        .single();
+
+    if (!roomData?.current_story_id) {
+        await supabaseServer
+            .from("rooms")
+            .update({
+                current_story_id: insertedStory.id,
+                last_activity: new Date().toISOString(),
+            })
+            .eq("code", code);
+    }
 
     const room = await buildRoomObject(code);
     if (!room) {
@@ -945,17 +972,33 @@ export async function addMultipleStoriesToQueue(
             order_index: maxOrder + 1 + index,
         }));
 
-        const { error: insertError } = await supabaseServer
+        const { data: insertedStories, error: insertError } = await supabaseServer
             .from("stories")
-            .insert(storiesToInsert);
+            .insert(storiesToInsert)
+            .select("id")
+            .order("order_index", { ascending: true });
 
         if (insertError) {
             console.error("Error inserting stories:", insertError);
             return { success: false, error: "Failed to add stories" };
         }
 
-        // Note: Not updating last_activity to avoid triggering unnecessary realtime events
-        // The stories table inserts will trigger their own realtime events
+        // Auto-set the first story as current if the room has none yet
+        const { data: roomData } = await supabaseServer
+            .from("rooms")
+            .select("current_story_id")
+            .eq("code", code)
+            .single();
+
+        if (!roomData?.current_story_id && insertedStories && insertedStories.length > 0) {
+            await supabaseServer
+                .from("rooms")
+                .update({
+                    current_story_id: insertedStories[0].id,
+                    last_activity: new Date().toISOString(),
+                })
+                .eq("code", code);
+        }
 
         return { success: true };
     } catch (error) {
