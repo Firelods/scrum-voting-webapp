@@ -157,6 +157,7 @@ export function VotingResults({ room }: VotingResultsProps) {
                                         value: "Story Points",
                                         position: "insideBottom",
                                         offset: -5,
+                                        fill: "var(--color-muted-foreground)",
                                     }}
                                 />
                                 <YAxis
@@ -164,6 +165,7 @@ export function VotingResults({ room }: VotingResultsProps) {
                                         value: "Number of Votes",
                                         angle: -90,
                                         position: "insideLeft",
+                                        fill: "var(--color-muted-foreground)",
                                     }}
                                 />
                                 <ChartTooltip

@@ -437,7 +437,7 @@ export default function RoomPage({
                                         <p className="text-gray-600 dark:text-gray-400 text-lg">
                                             You are participating as an observer.
                                         </p>
-                                        <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">
+                                        <p className="text-gray-500 dark:text-gray-400 text-sm mt-2">
                                             You can follow the voting but cannot submit your own vote.
                                         </p>
                                     </div>
