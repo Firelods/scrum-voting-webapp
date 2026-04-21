@@ -496,6 +496,13 @@ export async function nextStory(code: string) {
                     .update({ final_estimate: consensus })
                     .eq("id", currentStory.id);
 
+                // Sync the in-memory array so the "find next" search below
+                // doesn't treat this story as unestimated (stale array bug)
+                const idx = stories?.findIndex(s => s.id === currentStory.id);
+                if (stories && idx !== undefined && idx >= 0) {
+                    stories[idx] = { ...stories[idx], final_estimate: consensus };
+                }
+
                 // If this story has a parent, recalculate the parent's estimate
                 const storyData = stories?.find((s: any) => s.id === currentStory.id);
                 if (storyData?.parent_id) {
@@ -520,8 +527,10 @@ export async function nextStory(code: string) {
             nextStoryId = nextUnestimated.id;
         } else {
             // If no unestimated stories after current, look from the beginning
+            // Exclude the current story — Next Story must always move to a different one
             const firstUnestimated = stories.find(
-                s => s.final_estimate === null || s.final_estimate === undefined
+                s => s.id !== currentStory?.id &&
+                     (s.final_estimate === null || s.final_estimate === undefined)
             );
             if (firstUnestimated) {
                 nextStoryId = firstUnestimated.id;
