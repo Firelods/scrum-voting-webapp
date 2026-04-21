@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { X, ExternalLink, GitBranch, Star, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 const STORAGE_KEY = "rebase-ads-disabled";
 
@@ -117,16 +116,6 @@ export function RebaseAds() {
         setDisabled(isDisabled);
     }, []);
 
-    const showNextAd = useCallback(() => {
-        setAdIndex((prev) => {
-            const next = (prev + 1) % ADS.length;
-            setCurrent(ADS[next]);
-            return next;
-        });
-        setPositionIndex((prev) => (prev + 1) % POSITIONS.length);
-        setVisible(true);
-    }, []);
-
     useEffect(() => {
         if (disabled) return;
 
@@ -139,17 +128,20 @@ export function RebaseAds() {
         return () => clearTimeout(initial);
     }, [disabled]);
 
-    useEffect(() => {
-        if (disabled || !current || visible) return;
-
-        // Pub suivante 25 secondes après fermeture
-        const next = setTimeout(showNextAd, 25000);
-        return () => clearTimeout(next);
-    }, [disabled, current, visible, showNextAd]);
-
-    const handleClose = () => {
+    const handleClose = useCallback(() => {
         setVisible(false);
-    };
+
+        // Réapparaît 1,5 seconde après, à un autre endroit avec la pub suivante
+        setTimeout(() => {
+            setAdIndex((prev) => {
+                const next = (prev + 1) % ADS.length;
+                setCurrent(ADS[next]);
+                return next;
+            });
+            setPositionIndex((prev) => (prev + 1) % POSITIONS.length);
+            setVisible(true);
+        }, 1500);
+    }, []);
 
     const handleDisable = () => {
         localStorage.setItem(STORAGE_KEY, "true");
