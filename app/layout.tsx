@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { RebaseAds } from "@/components/rebase-ads";
 import "./globals.css";
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -55,6 +56,7 @@ export default function RootLayout({
         <html lang="fr">
             <body className={`font-sans antialiased`}>
                 {children}
+                <RebaseAds />
                 <Analytics />
             </body>
         </html>
