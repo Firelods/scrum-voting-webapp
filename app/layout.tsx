@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { RebaseAds } from "@/components/rebase-ads";
 import "./globals.css";
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -64,6 +65,7 @@ export default function RootLayout({
                 >
                     {children}
                     <ThemeToggle />
+                    <RebaseAds />
                     <Analytics />
                 </ThemeProvider>
             </body>
