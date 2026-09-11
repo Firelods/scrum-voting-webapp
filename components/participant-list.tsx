@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Participant } from "@/lib/types";
 import { Check, Clock, Crown, Eye } from "lucide-react";
+import { formatVoteValue, isUnknownVote } from "@/lib/constants";
 
 interface ParticipantListProps {
     participants: Participant[];
@@ -48,8 +49,13 @@ export function ParticipantList({
                                             <Badge
                                                 variant="outline"
                                                 className="font-bold"
+                                                title={
+                                                    isUnknownVote(participant.vote)
+                                                        ? "Unsure"
+                                                        : undefined
+                                                }
                                             >
-                                                {participant.vote}
+                                                {formatVoteValue(participant.vote)}
                                             </Badge>
                                         )}
                                         {/* Sinon afficher juste le statut voté/pas voté */}

@@ -15,6 +15,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { ExternalLink, TrendingUp, Users, Edit } from "lucide-react";
+import { formatVoteValue, isUnknownVote } from "@/lib/constants";
 import { Loader } from "@/components/ui/loader";
 
 interface VoteHistoryEntry {
@@ -26,13 +27,14 @@ interface VoteHistoryEntry {
         participant_name: string;
         vote_value: number;
     }>;
+    // null when every participant voted "?" (no numeric vote to aggregate)
     statistics: {
         average: number;
         median: number;
         mode: number;
         min: number;
         max: number;
-    };
+    } | null;
 }
 
 interface VoteSummaryProps {
@@ -210,7 +212,10 @@ export function VoteSummary({ roomCode }: VoteSummaryProps) {
                                                         step="0.5"
                                                     />
                                                     <p className="text-xs text-muted-foreground mt-1">
-                                                        Current consensus: {entry.statistics.median} (median)
+                                                        Current consensus:{" "}
+                                                        {entry.statistics
+                                                            ? `${entry.statistics.median} (median)`
+                                                            : "no numeric vote"}
                                                     </p>
                                                 </div>
                                                 <div className="flex gap-2">
@@ -245,39 +250,45 @@ export function VoteSummary({ roomCode }: VoteSummaryProps) {
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {/* Statistics */}
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                                <div className="text-center">
-                                    <p className="text-xs text-muted-foreground">Average</p>
-                                    <p className="text-lg font-semibold">
-                                        {entry.statistics.average.toFixed(1)}
-                                    </p>
+                            {entry.statistics ? (
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                    <div className="text-center">
+                                        <p className="text-xs text-muted-foreground">Average</p>
+                                        <p className="text-lg font-semibold">
+                                            {entry.statistics.average.toFixed(1)}
+                                        </p>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-xs text-muted-foreground">Median</p>
+                                        <p className="text-lg font-semibold">
+                                            {entry.statistics.median}
+                                        </p>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-xs text-muted-foreground">Mode</p>
+                                        <p className="text-lg font-semibold">
+                                            {entry.statistics.mode}
+                                        </p>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-xs text-muted-foreground">Range</p>
+                                        <p className="text-lg font-semibold">
+                                            {entry.statistics.min}-{entry.statistics.max}
+                                        </p>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-xs text-muted-foreground">
+                                            <Users className="h-3 w-3 inline mr-1" />
+                                            Voters
+                                        </p>
+                                        <p className="text-lg font-semibold">{entry.votes.length}</p>
+                                    </div>
                                 </div>
-                                <div className="text-center">
-                                    <p className="text-xs text-muted-foreground">Median</p>
-                                    <p className="text-lg font-semibold">
-                                        {entry.statistics.median}
-                                    </p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-xs text-muted-foreground">Mode</p>
-                                    <p className="text-lg font-semibold">
-                                        {entry.statistics.mode}
-                                    </p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-xs text-muted-foreground">Range</p>
-                                    <p className="text-lg font-semibold">
-                                        {entry.statistics.min}-{entry.statistics.max}
-                                    </p>
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-xs text-muted-foreground">
-                                        <Users className="h-3 w-3 inline mr-1" />
-                                        Voters
-                                    </p>
-                                    <p className="text-lg font-semibold">{entry.votes.length}</p>
-                                </div>
-                            </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">
+                                    Everyone voted {'"?"'}: no statistics available.
+                                </p>
+                            )}
 
                             {/* Individual Votes */}
                             <div>
@@ -293,8 +304,16 @@ export function VoteSummary({ roomCode }: VoteSummaryProps) {
                                             <span className="text-sm font-medium">
                                                 {vote.participant_name}
                                             </span>
-                                            <Badge variant="secondary" className="font-bold">
-                                                {vote.vote_value}
+                                            <Badge
+                                                variant="secondary"
+                                                className="font-bold"
+                                                title={
+                                                    isUnknownVote(vote.vote_value)
+                                                        ? "Unsure"
+                                                        : undefined
+                                                }
+                                            >
+                                                {formatVoteValue(vote.vote_value)}
                                             </Badge>
                                         </div>
                                     ))}
@@ -302,25 +321,27 @@ export function VoteSummary({ roomCode }: VoteSummaryProps) {
                             </div>
 
                             {/* Consensus Indicator */}
-                            <div>
-                                {entry.statistics.min === entry.statistics.max ? (
-                                    <Badge variant="default" className="bg-green-600">
-                                        Perfect Consensus
-                                    </Badge>
-                                ) : entry.statistics.max - entry.statistics.min <= 3 ? (
-                                    <Badge variant="default" className="bg-blue-600">
-                                        High Consensus
-                                    </Badge>
-                                ) : entry.statistics.max - entry.statistics.min <= 8 ? (
-                                    <Badge variant="default" className="bg-yellow-600">
-                                        Moderate Consensus
-                                    </Badge>
-                                ) : (
-                                    <Badge variant="default" className="bg-red-600">
-                                        Low Consensus
-                                    </Badge>
-                                )}
-                            </div>
+                            {entry.statistics && (
+                                <div>
+                                    {entry.statistics.min === entry.statistics.max ? (
+                                        <Badge variant="default" className="bg-green-600">
+                                            Perfect Consensus
+                                        </Badge>
+                                    ) : entry.statistics.max - entry.statistics.min <= 3 ? (
+                                        <Badge variant="default" className="bg-blue-600">
+                                            High Consensus
+                                        </Badge>
+                                    ) : entry.statistics.max - entry.statistics.min <= 8 ? (
+                                        <Badge variant="default" className="bg-yellow-600">
+                                            Moderate Consensus
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="default" className="bg-red-600">
+                                            Low Consensus
+                                        </Badge>
+                                    )}
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 ))}

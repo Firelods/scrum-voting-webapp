@@ -1,10 +1,11 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import type { FibonacciValue } from "@/lib/types"
+import type { VoteValue } from "@/lib/types"
+import { formatVoteValue, isUnknownVote } from "@/lib/constants"
 
 interface FibonacciCardProps {
-  value: FibonacciValue
+  value: VoteValue
   selected?: boolean
   onClick?: () => void
   disabled?: boolean
@@ -13,7 +14,8 @@ interface FibonacciCardProps {
 }
 
 export function FibonacciCard({ value, selected, onClick, disabled, revealed, count }: FibonacciCardProps) {
-  const displayValue = value === null ? "?" : value
+  const displayValue = formatVoteValue(value)
+  const unknown = isUnknownVote(value)
 
   return (
     <button
@@ -21,7 +23,7 @@ export function FibonacciCard({ value, selected, onClick, disabled, revealed, co
       disabled={disabled}
       className={cn(
         "relative flex flex-col items-center justify-center rounded-xl transition-all duration-200",
-        "w-20 h-28 md:w-24 md:h-32 lg:w-28 lg:h-36",
+        "w-16 h-24 md:w-20 md:h-28 lg:w-24 lg:h-32",
         "border-2 shadow-lg hover:shadow-xl",
         "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
         selected
@@ -31,7 +33,12 @@ export function FibonacciCard({ value, selected, onClick, disabled, revealed, co
         !disabled && !selected && "hover:bg-blue-50 dark:hover:bg-gray-700",
       )}
     >
-      <span className="text-3xl md:text-4xl font-bold">{displayValue}</span>
+      <span className="text-2xl md:text-3xl lg:text-4xl font-bold">{displayValue}</span>
+      {unknown && (
+        <span className="mt-1 text-[10px] md:text-xs font-medium uppercase tracking-wide opacity-70">
+          Unsure
+        </span>
+      )}
       {revealed && count !== undefined && count > 0 && (
         <span
           className={cn(

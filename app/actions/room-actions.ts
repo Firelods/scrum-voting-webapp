@@ -2,7 +2,7 @@
 
 import { supabaseServer } from "@/lib/db-supabase";
 import type { Room, Story } from "@/lib/types";
-import { FIBONACCI_VALUES } from "@/lib/constants";
+import { NUMERIC_VOTE_VALUES, numericVotes } from "@/lib/constants";
 
 // Helper function to generate a random room code
 function generateRoomCode(): string {
@@ -465,9 +465,10 @@ export async function nextStory(code: string) {
             .select("vote_value")
             .eq("room_code", code);
 
-        // If there are votes, calculate the consensus (median rounded to nearest Fibonacci value)
+        // If there are votes, calculate the consensus (median rounded to the nearest available value)
         if (votes && votes.length > 0) {
-            const voteValues = votes.map(v => v.vote_value).filter(v => v !== null) as number[];
+            // "?" votes carry no story points, they are ignored in the consensus
+            const voteValues = numericVotes(votes.map(v => v.vote_value));
 
             if (voteValues.length > 0) {
                 // Calculate median
@@ -476,17 +477,15 @@ export async function nextStory(code: string) {
                     ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
                     : sorted[Math.floor(sorted.length / 2)];
 
-                // Find closest Fibonacci value to the median
-                // Cast to number[] since FIBONACCI_VALUES only contains numbers (null is excluded in practice)
-                const fibNumbers = FIBONACCI_VALUES.filter(v => v !== null) as number[];
-                let consensus = fibNumbers[0];
+                // Find the closest available card value to the median
+                let consensus = NUMERIC_VOTE_VALUES[0];
                 let minDiff = Math.abs(median - consensus);
 
-                for (const fibValue of fibNumbers) {
-                    const diff = Math.abs(median - fibValue);
+                for (const cardValue of NUMERIC_VOTE_VALUES) {
+                    const diff = Math.abs(median - cardValue);
                     if (diff < minDiff) {
                         minDiff = diff;
-                        consensus = fibValue;
+                        consensus = cardValue;
                     }
                 }
 
@@ -910,13 +909,14 @@ interface VoteHistoryEntry {
         participant_name: string;
         vote_value: number;
     }>;
+    // null when every participant voted "?" (no numeric vote to aggregate)
     statistics: {
         average: number;
         median: number;
         mode: number;
         min: number;
         max: number;
-    };
+    } | null;
 }
 
 export async function updateStory(
@@ -1400,8 +1400,24 @@ export async function getVoteHistory(
                 continue;
             }
 
-            // Calculate statistics
-            const voteValues = votes.map((v) => v.vote_value);
+            // Calculate statistics, ignoring the "?" votes which carry no points
+            const voteValues = numericVotes(votes.map((v) => v.vote_value));
+
+            if (voteValues.length === 0) {
+                history.push({
+                    story_id: story.id,
+                    story_title: story.title,
+                    final_estimate: story.final_estimate,
+                    voted_at: story.voted_at,
+                    votes: votes.map((v) => ({
+                        participant_name: v.participant_name,
+                        vote_value: v.vote_value,
+                    })),
+                    statistics: null,
+                });
+                continue;
+            }
+
             const sum = voteValues.reduce((a, b) => a + b, 0);
             const average = sum / voteValues.length;
 
