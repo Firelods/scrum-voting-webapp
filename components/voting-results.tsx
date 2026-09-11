@@ -17,7 +17,8 @@ import {
     ChartTooltip,
     ChartTooltipContent,
 } from "@/components/ui/chart";
-import { TrendingUp, Users, Target } from "lucide-react";
+import { TrendingUp, Users, Target, HelpCircle } from "lucide-react";
+import { numericVotes, isUnknownVote } from "@/lib/constants";
 
 interface VotingResultsProps {
     room: Room;
@@ -28,9 +29,9 @@ export function VotingResults({ room }: VotingResultsProps) {
 
     // Calculate statistics - only count online participants who are voters
     const onlineVoters = room.participants.filter((p) => p.isOnline && p.isVoter);
-    const votes = onlineVoters
-        .map((p) => p.vote)
-        .filter((v) => v !== null) as number[];
+    // "?" votes are real votes but carry no points: they are counted apart
+    const unknownCount = onlineVoters.filter((p) => isUnknownVote(p.vote)).length;
+    const votes = numericVotes(onlineVoters.map((p) => p.vote));
 
     if (votes.length === 0) {
         return (
@@ -40,7 +41,9 @@ export function VotingResults({ room }: VotingResultsProps) {
                 </CardHeader>
                 <CardContent>
                     <p className="text-center text-gray-600 dark:text-gray-400 py-8">
-                        No votes submitted yet.
+                        {unknownCount > 0
+                            ? `Everyone voted "?" (${unknownCount}): nothing to estimate yet.`
+                            : "No votes submitted yet."}
                     </p>
                 </CardContent>
             </Card>
@@ -133,6 +136,16 @@ export function VotingResults({ room }: VotingResultsProps) {
                         </p>
                     </div>
                 </div>
+
+                {unknownCount > 0 && (
+                    <div className="flex items-center justify-center gap-2 p-3 bg-amber-50 dark:bg-amber-950 rounded-lg">
+                        <HelpCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                            {unknownCount} participant{unknownCount > 1 ? "s" : ""} voted{" "}
+                            {'"?"'} (excluded from the statistics)
+                        </span>
+                    </div>
+                )}
 
                 {/* Chart */}
                 <div>

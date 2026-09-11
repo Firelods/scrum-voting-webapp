@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader, Skeleton } from "@/components/ui/loader";
-import type { FibonacciValue } from "@/lib/types";
+import type { VoteValue } from "@/lib/types";
 import { Copy, Check, ExternalLink, Settings, TrendingUp, Filter } from "lucide-react";
 import { ScrumMasterPanel } from "@/components/scrum-master-panel";
 import { VotingResults } from "@/components/voting-results";
@@ -27,7 +27,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { logger } from "@/lib/logger";
-import { FIBONACCI_VALUES } from "@/lib/constants";
+import { VOTE_VALUES } from "@/lib/constants";
 
 export default function RoomPage({
     params,
@@ -41,7 +41,7 @@ export default function RoomPage({
         code,
         participantId
     );
-    const [selectedVote, setSelectedVote] = useState<FibonacciValue>(null);
+    const [selectedVote, setSelectedVote] = useState<VoteValue>(null);
     const [copiedCode, setCopiedCode] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
     const [showConfetti, setShowConfetti] = useState(false);
@@ -94,7 +94,7 @@ export default function RoomPage({
         localStorage.setItem("confetti-enabled", newValue.toString());
     };
 
-    const handleVote = async (value: FibonacciValue) => {
+    const handleVote = async (value: VoteValue) => {
         if (!participantId || !room?.votingActive || isSubmittingVote) return;
 
         setSelectedVote(value);
@@ -423,7 +423,7 @@ export default function RoomPage({
                         {/* Voting Results */}
                         {room.votesRevealed && <VotingResults room={room} />}
 
-                        {/* Fibonacci Cards */}
+                        {/* Voting Cards */}
                         <Card>
                             <CardHeader>
                                 <CardTitle>Select Your Estimate</CardTitle>
@@ -459,7 +459,7 @@ export default function RoomPage({
                                                         <Loader size="md" className="text-blue-600 dark:text-blue-400" />
                                                     </div>
                                                 )}
-                                                {FIBONACCI_VALUES.map((value) => (
+                                                {VOTE_VALUES.map((value) => (
                                                     <FibonacciCard
                                                         key={value}
                                                         value={value}
@@ -477,7 +477,7 @@ export default function RoomPage({
 
                                         {room.votesRevealed && (
                                             <div className="flex flex-wrap justify-center gap-3 md:gap-4">
-                                                {FIBONACCI_VALUES.map((value) => {
+                                                {VOTE_VALUES.map((value) => {
                                                     const count =
                                                         room.participants.filter(
                                                             (p) => p.vote === value

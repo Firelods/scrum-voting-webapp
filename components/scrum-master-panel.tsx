@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { numericVotes } from "@/lib/constants";
 
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -206,10 +207,10 @@ export function ScrumMasterPanel({
 
     // Calculate suggested estimate from votes
     const getSuggestedEstimate = () => {
-        const voters = room.participants.filter((p) => p.vote !== null);
-        if (voters.length === 0) return 0;
+        // "?" votes carry no story points, they are ignored in the suggestion
+        const votes = numericVotes(room.participants.map((p) => p.vote));
+        if (votes.length === 0) return 0;
 
-        const votes = voters.map((p) => p.vote as number);
         const sorted = [...votes].sort((a, b) => a - b);
         const median =
             sorted.length % 2 === 0

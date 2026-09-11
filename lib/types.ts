@@ -1,9 +1,16 @@
-export type FibonacciValue = 0 | 0.5 | 1 | 2 | 3 | 5 | 8 | 13 | 20 | 40 | 100 | null;
+/**
+ * A vote: any value available on the cards (see NUMERIC_VOTE_VALUES),
+ * UNKNOWN_VOTE (-1) for the "?" card, or null when nothing was voted yet.
+ */
+export type VoteValue = number | null;
+
+/** @deprecated kept for compatibility, use VoteValue instead */
+export type FibonacciValue = VoteValue;
 
 export interface Participant {
     id: string;
     name: string;
-    vote: FibonacciValue;
+    vote: VoteValue;
     isScumMaster: boolean;
     isOnline: boolean;
     isVoter: boolean;
