@@ -10,10 +10,10 @@ export const UNKNOWN_VOTE = -1;
 /**
  * Numeric estimation values available on the cards.
  * Every integer from 1 to 13 is available (not only the Fibonacci sequence),
- * plus 0 / 0.5 for trivial work and 20 / 40 / 100 for oversized stories.
+ * plus 0 / 0.5 for trivial work. Stories bigger than 13 should be split.
  */
 export const NUMERIC_VOTE_VALUES: number[] = [
-    0, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 20, 40, 100,
+    0, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
 ];
 
 /**
